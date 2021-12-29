@@ -1,2 +1,8 @@
-pydantic
-tabulate
+Flask>=2.0.2
+psutil>=5.8.0
+pydantic>=1.8.2
+requests>=2.26.0
+rich>=10.16.1
+setuptools>=57.4.0
+tabulate>=0.8.9
+tinydb>=4.5.2

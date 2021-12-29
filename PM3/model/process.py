@@ -15,8 +15,11 @@ class Process(BaseModel):
 
     @property
     def is_running(self):
-        ps = psutil.Process(self.pid)
-        return ps.is_running()
+        if self.pid:
+            ps = psutil.Process(self.pid)
+            return ps.is_running()
+        else:
+            return False
 
     @property
     def ps(self):

@@ -1,8 +1,11 @@
+#!/usr/bin/env python3
+
 import requests
 from tabulate import tabulate
 import argparse
 import logging
 from model.process import Process
+from rich import print
 
 logging.basicConfig(level=logging.DEBUG)
 base_url = 'http://127.0.0.1:5000/'
@@ -26,6 +29,8 @@ def _ls():
     if res := _get('ls'):
         out = tabulate([tuple(i.values()) for i in res], headers=res[0].keys())
         return out
+    else:
+        print('Nessun processo inserito')
 
 def _new_test():
     p = Process(cmd='./asd.py',
@@ -81,10 +86,40 @@ if __name__ == '__main__':
     logging.debug(kwargs)
 
     if args.subparser == 'ls':
-        print(_ls())
+        if ls := _ls():
+            print(ls)
+        else:
+            print('---')
 
     elif args.subparser == 'new':
-        print(_new_test())
+        pm3_name = args.pm3_name or ''
+        pm3_id = args.pm3_id or 0
+        pm3_shell = args.pm3_shell or False
+        pm3_autorun = args.pm3_autorun or False
+        pm3_stdout = args.pm3_stdout or ''
+        pm3_stderr = args.pm3_stderr or ''
+
+        p = Process(cmd=args.cmd,
+                    pm3_name=pm3_name,
+                    pm3_id=pm3_id,
+                    shell=pm3_shell,
+                    autorun=pm3_autorun,
+                    stdout=pm3_stdout,
+                    stderr=pm3_stderr)
+        print(p)
+        res = _post('new', p.dict())
+        if res['err']:
+            print(res)
+        else:
+            print('[green]OK[/green]')
+        #print(_new_test())
+
+    elif args.subparser == 'rm':
+        res = _get(f'rm/{args.id_or_name}')
+        if res['err']:
+            print(f"[red]{res['msg']}[/red]")
+        else:
+            print(f"[green]{res['msg']}[/green]")
 
     else:
         print(parser.format_help())
