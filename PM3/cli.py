@@ -7,7 +7,7 @@ import logging
 from model.process import Process
 from rich import print
 
-logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.DEBUG)
 base_url = 'http://127.0.0.1:5000/'
 
 def _get(path):
@@ -23,7 +23,6 @@ def _post(path, jdata):
         return r.json()
     else:
         return {}
-
 
 def _ls():
     if res := _get('ls'):
@@ -47,6 +46,9 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(dest='subparser')
 
     parser_ls = subparsers.add_parser('ls', help='show process')
+
+    parser_ping = subparsers.add_parser('ping', help='Ensure pm3 daemon has been launched')
+    parser_ping.add_argument('-v', '--verbose', action='store_true', help='verbose')
 
     parser_save = subparsers.add_parser('save', help='save process config into db')
 
@@ -85,7 +87,19 @@ if __name__ == '__main__':
     kwargs = vars(args)
     logging.debug(kwargs)
 
-    if args.subparser == 'ls':
+    if args.subparser == 'ping':
+        try:
+            res = _get('ping')
+            if res['err']:
+                print(res)
+            else:
+                print('[green]OK[/green]')
+        except requests.exceptions.ConnectionError as e:
+            print('[red]ERROR[/red]')
+            if args.verbose:
+                print(e)
+
+    elif args.subparser == 'ls':
         if ls := _ls():
             print(ls)
         else:

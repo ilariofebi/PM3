@@ -19,8 +19,8 @@ setuptools.setup(
     packages=['PM3'],
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: GPL v3",
-        "Operating System :: Linux",
+        "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+        "Operating System :: POSIX :: Linux",
     ],
     python_requires='>=3.9',
     install_requires=install_req_list,

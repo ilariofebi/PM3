@@ -26,6 +26,9 @@ class Process(BaseModel):
         return psutil.Process(self.pid)
 
     def kill(self):
+        if self.pid is None:
+            return None
+
         ps = psutil.Process(self.pid)
         if ps.is_running():
             for proc in ps.children(recursive=True):
