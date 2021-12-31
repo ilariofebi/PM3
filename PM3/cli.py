@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 
 import requests
 from tabulate import tabulate
@@ -6,11 +7,31 @@ import argparse
 import logging
 from model.process import Process
 from rich import print
+import os, signal
+from configparser import ConfigParser
 
 #logging.basicConfig(level=logging.DEBUG)
-base_url = 'http://127.0.0.1:5000/'
+
+def _setup():
+    pm3_home_dir = os.path.expanduser('~/.pm3')
+    config_file = f'{pm3_home_dir}/config.ini'
+    if not os.path.isdir(pm3_home_dir):
+        os.mkdir(pm3_home_dir)
+    if not os.path.isfile(config_file):
+        config = ConfigParser()
+        config['main_section'] = {
+            'pm3_home_dir': pm3_home_dir,
+            'pm3_db': f'{pm3_home_dir}/pm3_db.json',
+            'pm3_db_process_table': 'pm3_procs',
+            'backend_url': 'http://127.0.0.1:5000/',
+            'backend_start_interpreter': os.path.expanduser('~/vp39/bin/python3'),
+            'backend_start_command': '#',
+        }
+        with open(config_file, 'w') as output_file:
+            config.write(output_file)
 
 def _get(path):
+    base_url = config['main_section'].get('backend_url')
     r = requests.get(f'{base_url}/{path}')
     if r.status_code == 200:
         return r.json()
@@ -18,6 +39,7 @@ def _get(path):
         return {}
 
 def _post(path, jdata):
+    base_url = config['main_section'].get('backend_url')
     r = requests.post(f'{base_url}/{path}', json=jdata)
     if r.status_code == 200:
         return r.json()
@@ -40,17 +62,36 @@ def _new_test():
     if res := _post('new', p.dict()):
         return res
 
+def _ping():
+    try:
+        res = _get('ping')
+    except requests.exceptions.ConnectionError as e:
+        res = {'err': True, 'msg': e}
+    return res
 
 if __name__ == '__main__':
+
+    # TODO: Create Wizard
+    pm3_home_dir = os.path.expanduser('~/.pm3')
+    config_file = f'{pm3_home_dir}/config.ini'
+
+    if not os.path.isfile(config_file):
+        _setup()
+    config = ConfigParser()
+    config.read(config_file)
+
     parser = argparse.ArgumentParser(prog='pm3', description='Like pm2 without node.js')
     subparsers = parser.add_subparsers(dest='subparser')
 
     parser_ls = subparsers.add_parser('ls', help='show process')
 
+    parser_daemon = subparsers.add_parser('daemon', help='Daemon options')
+    parser_daemon.add_argument('-s', '--start', action='store_true', help='Start daemon')
+    parser_daemon.add_argument('-S', '--stop', action='store_true', help='Stop daemon')
+    parser_daemon.add_argument('-t', '--status', action='store_true', help='Status Info')
+
     parser_ping = subparsers.add_parser('ping', help='Ensure pm3 daemon has been launched')
     parser_ping.add_argument('-v', '--verbose', action='store_true', help='verbose')
-
-    parser_save = subparsers.add_parser('save', help='save process config into db')
 
     parser_new = subparsers.add_parser('new', help='create a new process')
     parser_new.add_argument('cmd', help='linux command')
@@ -87,17 +128,48 @@ if __name__ == '__main__':
     kwargs = vars(args)
     logging.debug(kwargs)
 
-    if args.subparser == 'ping':
-        try:
-            res = _get('ping')
-            if res['err']:
-                print(res)
+    if args.subparser == 'daemon':
+        res = _ping()
+        if not res['err']:
+            msg = json.loads(res['msg'])
+
+        if args.start:
+            if not res['err']:
+                print(f"process running on pid {msg['pid']}")
             else:
-                print('[green]OK[/green]')
-        except requests.exceptions.ConnectionError as e:
+
+                cmd = f"{config['main_section'].get('backend_start_interpreter')} {config['main_section'].get('backend_start_command')}"
+                backend = Process(cmd=cmd,
+                                  pm3_name='__backend__',
+                                  pm3_id=0,
+                                  shell=False,
+                                  stdout=f'{pm3_home_dir}/__backend__.log',
+                                  stderr=f'{pm3_home_dir}/__backend__.err')
+                backend.run(detach=True)
+                print(f"process starting")
+
+        if args.stop:
+            if not res['err']:
+                os.kill(msg['pid'], signal.SIGKILL)
+                print(f"send kill sig to pid {msg['pid']}")
+            else:
+                print('process already stopped')
+                #print(res)
+
+        if args.status:
+            res = _get('status')
+            print(res)
+
+    elif args.subparser == 'ping':
+        res = _ping()
+        if res['err']:
             print('[red]ERROR[/red]')
             if args.verbose:
-                print(e)
+                print(res['msg'])
+        else:
+            print('[green]PONG![/green]')
+            if args.verbose:
+                print(res['msg'])
 
     elif args.subparser == 'ls':
         if ls := _ls():

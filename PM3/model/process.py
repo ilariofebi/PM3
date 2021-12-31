@@ -2,6 +2,7 @@ from pydantic import BaseModel
 import subprocess as sp
 import psutil
 import time
+import os
 
 class Process(BaseModel):
     cmd: str
@@ -45,19 +46,27 @@ class Process(BaseModel):
                 ps.terminate()
             ps.terminate()
 
-    def run(self):
-        fn = self.cmd.split('/')[-1]
-        if not self.stdout:
-            self.stdout = f'/tmp/{fn}.out'
+    def run(self, detach=False):
         fout = open(self.stdout, 'a')
-
-        if not self.stderr:
-            self.stdout = f'/tmp/{fn}.err'
         ferr = open(self.stderr, 'a')
+        if isinstance(self.cmd, list):
+            cmd = self.cmd
+        elif isinstance(self.cmd, str):
+            cmd = self.cmd.split(' ')
 
-        p = sp.Popen(self.cmd,
-                     shell=self.shell,
-                     stdout=fout,
-                     stderr=ferr)
+        if detach:
+            if 'nohup' not in cmd[0]:
+                cmd.insert(0, '/usr/bin/nohup')
+            #print('detach', cmd)
+            p = sp.Popen(cmd,
+                         shell=self.shell,
+                         stdout=fout,
+                         stderr=ferr,
+                         preexec_fn=os.setpgrp)
+        else:
+            p = sp.Popen(cmd,
+                         shell=self.shell,
+                         stdout=fout,
+                         stderr=ferr)
         self.pid = p.pid
         return p

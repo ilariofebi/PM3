@@ -1,12 +1,28 @@
+#!/usr/bin/env python3
+
+import os, sys
 from flask import Flask, request
 from tinydb import TinyDB, where
 from model.process import Process
 import logging
 import json
 from collections import namedtuple
+from configparser import ConfigParser
+import dsnparse
+import psutil
 
-db = TinyDB('/tmp/pm3_db.json')
-tbl = db.table('pm3_procs')
+pm3_home_dir = os.path.expanduser('~/.pm3')
+config_file = f'{pm3_home_dir}/config.ini'
+
+if not os.path.isfile(config_file):
+    print('config file not found')
+    sys.exit(1)
+
+config = ConfigParser()
+config.read(config_file)
+
+db = TinyDB(config['main_section'].get('pm3_db'))
+tbl = db.table(config['main_section'].get('pm3_db_process_table'))
 
 #from flask_crontab import Crontab
 
@@ -41,7 +57,13 @@ def find_id_or_name(id_or_name):
 
 @app.get("/ping")
 def pong():
-    return ret_msg('OK', False)._asdict()
+    msg = json.dumps({'pid': os.getpid()})
+    return ret_msg(msg, False)._asdict()
+
+@app.get("/status")
+def status():
+    ps = psutil.Process(os.getpid())
+    return ps.as_dict()
 
 @app.post("/new")
 def new_process():
@@ -125,4 +147,7 @@ def restart_process():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    url = config['main_section'].get('backend_url')
+    dsn = dsnparse.parse(url)
+
+    app.run(debug=True, host=dsn.host, port=dsn.port)
