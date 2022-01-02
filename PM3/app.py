@@ -3,7 +3,7 @@
 import os, sys
 from flask import Flask, request
 from tinydb import TinyDB, where
-from model.process import Process
+from PM3.model.process import Process
 import logging
 import json
 from collections import namedtuple
@@ -11,7 +11,7 @@ from configparser import ConfigParser
 import dsnparse
 import psutil
 from pathlib import Path
-from libs.dbfuncs import next_id, find_id_or_name, update
+from PM3.libs.dbfuncs import next_id, find_id_or_name, update
 
 pm3_home_dir = os.path.expanduser('~/.pm3')
 config_file = f'{pm3_home_dir}/config.ini'
@@ -164,8 +164,11 @@ def restart_process():
 #    print('cron')
 
 
-if __name__ == '__main__':
+def main():
     url = config['main_section'].get('backend_url')
     dsn = dsnparse.parse(url)
 
     app.run(debug=True, host=dsn.host, port=dsn.port)
+
+if __name__ == '__main__':
+    main()

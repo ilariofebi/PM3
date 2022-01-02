@@ -8,7 +8,7 @@ with open("requirements.txt", "r") as fh:
 
 setuptools.setup(
     name="PM3",
-    version="0.0.1",
+    version="0.0.2",
     author="Ilario Febi",
     author_email="ilario@febi.biz",
     description="Like pm2 without node.js ;-)",
@@ -16,7 +16,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/ilariofebi/PM3.git ",
     # packages=setuptools.find_packages(),
-    packages=['PM3'],
+    packages=['PM3', 'PM3.libs', 'PM3.model'],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
@@ -24,4 +24,8 @@ setuptools.setup(
     ],
     python_requires='>=3.9',
     install_requires=install_req_list,
+    entry_points={
+        "console_scripts": [
+            "pm3=PM3.cli:main",
+            "pm3_daemon=PM3.app:main"]}
 )

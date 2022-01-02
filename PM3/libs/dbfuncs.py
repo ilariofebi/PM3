@@ -1,5 +1,5 @@
 from collections import namedtuple
-from model.process import Process
+from PM3.model.process import Process
 from tinydb import TinyDB, where
 
 def next_id(tbl):

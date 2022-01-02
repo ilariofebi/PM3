@@ -5,15 +5,14 @@ import requests
 from tabulate import tabulate
 import argparse
 import logging
-from model.process import Process, ProcessStatus
+from PM3.model.process import Process, ProcessStatus
 from rich import print
 import os, signal
 from pathlib import Path
 from configparser import ConfigParser
-from libs.dbfuncs import next_id, find_id_or_name
+from PM3.libs.dbfuncs import next_id, find_id_or_name
 
 #logging.basicConfig(level=logging.DEBUG)
-
 
 def _setup():
     pm3_home_dir = Path('~/.pm3').expanduser()
@@ -32,7 +31,18 @@ def _setup():
         with open(config_file, 'w') as output_file:
             config.write(output_file)
 
+def _read_config():
+    pm3_home_dir = Path('~/.pm3').expanduser()
+    config_file = f'{pm3_home_dir}/config.ini'
+    if not Path(config_file).is_file():
+        _setup()
+    config = ConfigParser()
+    config.read(config_file)
+    return config
+
+
 def _get(path):
+    config = _read_config()
     base_url = config['main_section'].get('backend_url')
     r = requests.get(f'{base_url}/{path}')
     if r.status_code == 200:
@@ -41,6 +51,7 @@ def _get(path):
         return {}
 
 def _post(path, jdata):
+    config = _read_config()
     base_url = config['main_section'].get('backend_url')
     r = requests.post(f'{base_url}/{path}', json=jdata)
     if r.status_code == 200:
@@ -71,18 +82,12 @@ def _ping():
         res = {'err': True, 'msg': e}
     return res
 
-if __name__ == '__main__':
 
-    pm3_home_dir = Path('~/.pm3').expanduser()
-    config_file = f'{pm3_home_dir}/config.ini'
-
-    if not Path(config_file).is_file():
-        _setup()
-    config = ConfigParser()
-    config.read(config_file)
-
+def main():
+    config = _read_config()
     db = TinyDB(config['main_section'].get('pm3_db'))
     tbl = db.table(config['main_section'].get('pm3_db_process_table'))
+    pm3_home_dir = config['main_section'].get('pm3_home_dir')
 
     parser = argparse.ArgumentParser(prog='pm3', description='Like pm2 without node.js')
     subparsers = parser.add_subparsers(dest='subparser')
@@ -228,3 +233,6 @@ if __name__ == '__main__':
 
     else:
         print(parser.format_help())
+
+if __name__ == '__main__':
+    main()
