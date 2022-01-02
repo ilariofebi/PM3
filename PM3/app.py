@@ -10,6 +10,8 @@ from collections import namedtuple
 from configparser import ConfigParser
 import dsnparse
 import psutil
+from pathlib import Path
+from libs.dbfuncs import next_id, find_id_or_name, update
 
 pm3_home_dir = os.path.expanduser('~/.pm3')
 config_file = f'{pm3_home_dir}/config.ini'
@@ -31,30 +33,6 @@ app = Flask(__name__)
 ret_msg = namedtuple('RetMsg', 'msg, err')
 
 
-def find_id_or_name(id_or_name):
-    ION = namedtuple('Id_or_Name', 'type, data, P')
-
-    if id_or_name == 'all':
-        out = ION('special', id_or_name, [Process(**i) for i in tbl.all()])
-        return out
-
-    try:
-        id_or_name = int(id_or_name)
-    except ValueError:
-        if tbl.contains(where('pm3_name') == id_or_name):
-            p_data = tbl.get(where('pm3_name') == id_or_name)
-            out = ION('pm3_name', id_or_name, [Process(**p_data),])
-        else:
-            out = ION('pm3_name', id_or_name, [])
-
-    else:
-        if tbl.contains(where('pm3_id') == id_or_name):
-            p_data = tbl.get(where('pm3_id') == id_or_name)
-            out = ION('pm3_id', id_or_name, [Process(**p_data),])
-        else:
-            out = ION('pm3_id', id_or_name, [])
-    return out
-
 @app.get("/ping")
 def pong():
     msg = json.dumps({'pid': os.getpid()})
@@ -70,10 +48,10 @@ def new_process():
     logging.debug(request.json)
     P = Process(**request.json)
 
-    P.pm3_id = P.pm3_id or len(tbl.all())+1
+    P.pm3_id = P.pm3_id or next_id(tbl)
 
-    P.pm3_name = P.pm3_name or P.cmd.split(" ")[0]
-    P.pm3_name = P.pm3_name.replace(' ', '_').replace('./', '').replace('/', '')
+    #P.pm3_name = P.pm3_name or P.cmd.split(" ")[0]
+    #P.pm3_name = P.pm3_name.replace(' ', '_').replace('./', '').replace('/', '')
     if tbl.contains(where('pm3_name') == P.pm3_name):
         P.pm3_name = f'{P.pm3_name}_{P.pm3_id}'
 
@@ -92,11 +70,14 @@ def new_process():
 
 @app.get("/rm/<id_or_name>")
 def rm_process(id_or_name):
-    ion = find_id_or_name(id_or_name)
+    ion = find_id_or_name(tbl, id_or_name)
 
     # Kill process before remove
-    for p in ion.P:
-        p.kill()
+    for P in ion.P:
+        P.kill()
+        if not update(tbl, P):
+            msg = f'Error updating {P}'
+            return {'msg': msg, 'err': True}
 
     if ion.type == 'special' and ion.data == 'all':
         tbl.truncate()
@@ -123,16 +104,53 @@ def ls_process():
 
 @app.get("/start/<id_or_name>")
 def start_process(id_or_name):
-    pass
+    ion = find_id_or_name(tbl, id_or_name)
+    if len(ion.P) == 0:
+        msg = f'process {ion.type}={ion.data} not found'
+        return {'msg': msg, 'err': True}
+
+    for P in ion.P:
+        if P.is_running:
+            msg = f'process {P.pm3_name}(id={P.pm3_id}) already running with pid {P.pid}'
+            return {'msg': msg, 'err': True}
+        else:
+            try:
+                P.run()
+                if not update(tbl, P):
+                    msg = f'Error updating {P}'
+                    return {'msg': msg, 'err': True}
+            except FileNotFoundError as e:
+                print(e)
+                msg = f'File Not Found: {Path(P.cwd,P.cmd).as_posix()} ({ion.type}={ion.data})'
+                return {'msg': msg, 'err': True}
+            else:
+                msg = f'process {P.pm3_name}(id={P.pm3_id}) started with pid {P.pid}'
+                return {'msg': msg, 'err': False}
 
 
+    msg = f'Strange Error'
+    return {'msg': msg, 'err': True}
 
-@app.get("/stop")
-def stop_process():
-    # id or name
-    args = {k: v for k, v in request.args.items()}
-    print(args)
-    return args
+@app.get("/stop/<id_or_name>")
+def stop_process(id_or_name):
+    ion = find_id_or_name(tbl, id_or_name)
+    if len(ion.P) == 0:
+        msg = f'process {ion.type}={ion.data} not found'
+        return {'msg': msg, 'err': True}
+
+    for P in ion.P:
+        pid = P.pid
+        if not P.is_running:
+            msg = f'process {P.pm3_name}(id={P.pm3_id}) not running'
+            return {'msg': msg, 'err': True}
+        else:
+            P.kill()
+            if not update(tbl, P):
+                msg = f'Error updating {P}'
+                return {'msg': msg, 'err': True}
+
+            msg = f'process {P.pm3_name}(id={P.pm3_id}) with pid {pid} was killed'
+            return {'msg': msg, 'err': False}
 
 
 @app.get("/restart")

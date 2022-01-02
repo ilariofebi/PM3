@@ -1,30 +1,32 @@
 #!/usr/bin/env python3
 import json
-
+from tinydb import TinyDB, where
 import requests
 from tabulate import tabulate
 import argparse
 import logging
-from model.process import Process
+from model.process import Process, ProcessStatus
 from rich import print
 import os, signal
+from pathlib import Path
 from configparser import ConfigParser
+from libs.dbfuncs import next_id, find_id_or_name
 
 #logging.basicConfig(level=logging.DEBUG)
 
+
 def _setup():
-    pm3_home_dir = os.path.expanduser('~/.pm3')
+    pm3_home_dir = Path('~/.pm3').expanduser()
     config_file = f'{pm3_home_dir}/config.ini'
-    if not os.path.isdir(pm3_home_dir):
-        os.mkdir(pm3_home_dir)
-    if not os.path.isfile(config_file):
+    Path(pm3_home_dir).mkdir(mode=0o755, exist_ok=True)
+    if not Path(config_file).is_file():
         config = ConfigParser()
         config['main_section'] = {
             'pm3_home_dir': pm3_home_dir,
             'pm3_db': f'{pm3_home_dir}/pm3_db.json',
             'pm3_db_process_table': 'pm3_procs',
             'backend_url': 'http://127.0.0.1:5000/',
-            'backend_start_interpreter': os.path.expanduser('~/vp39/bin/python3'),
+            'backend_start_interpreter': Path('~/vp39/bin/python3').expanduser(),
             'backend_start_command': '#',
         }
         with open(config_file, 'w') as output_file:
@@ -71,14 +73,16 @@ def _ping():
 
 if __name__ == '__main__':
 
-    # TODO: Create Wizard
-    pm3_home_dir = os.path.expanduser('~/.pm3')
+    pm3_home_dir = Path('~/.pm3').expanduser()
     config_file = f'{pm3_home_dir}/config.ini'
 
-    if not os.path.isfile(config_file):
+    if not Path(config_file).is_file():
         _setup()
     config = ConfigParser()
     config.read(config_file)
+
+    db = TinyDB(config['main_section'].get('pm3_db'))
+    tbl = db.table(config['main_section'].get('pm3_db_process_table'))
 
     parser = argparse.ArgumentParser(prog='pm3', description='Like pm2 without node.js')
     subparsers = parser.add_subparsers(dest='subparser')
@@ -95,6 +99,7 @@ if __name__ == '__main__':
 
     parser_new = subparsers.add_parser('new', help='create a new process')
     parser_new.add_argument('cmd', help='linux command')
+    parser_new.add_argument('--cwd', dest='cwd', help='cwd of executable file')
     parser_new.add_argument('-n', '--name', dest='pm3_name', help='name into pm3')
     parser_new.add_argument('-i', '--id', dest='pm3_id', help='id into pm3')
     parser_new.add_argument('--shell', dest='pm3_shell', action='store_true', help='process into shell or not')
@@ -158,7 +163,8 @@ if __name__ == '__main__':
 
         if args.status:
             res = _get('status')
-            print(res)
+            #print(res)
+            print(ProcessStatus(**res))
 
     elif args.subparser == 'ping':
         res = _ping()
@@ -178,30 +184,43 @@ if __name__ == '__main__':
             print('---')
 
     elif args.subparser == 'new':
-        pm3_name = args.pm3_name or ''
-        pm3_id = args.pm3_id or 0
-        pm3_shell = args.pm3_shell or False
-        pm3_autorun = args.pm3_autorun or False
-        pm3_stdout = args.pm3_stdout or ''
-        pm3_stderr = args.pm3_stderr or ''
-
-        p = Process(cmd=args.cmd,
-                    pm3_name=pm3_name,
-                    pm3_id=pm3_id,
-                    shell=pm3_shell,
-                    autorun=pm3_autorun,
-                    stdout=pm3_stdout,
-                    stderr=pm3_stderr)
-        print(p)
-        res = _post('new', p.dict())
-        if res['err']:
-            print(res)
+        pm3_id = args.pm3_id or next_id(tbl)
+        ion = find_id_or_name(tbl, pm3_id)
+        if len(ion.P) > 0:
+            print(f'pm3_id={pm3_id} already used')
         else:
-            print('[green]OK[/green]')
-        #print(_new_test())
+            p = Process(cmd=args.cmd,
+                        cwd=args.cwd or Path.home().as_posix(),
+                        pm3_name=args.pm3_name or '',
+                        pm3_id=args.pm3_id or next_id(tbl),
+                        shell=args.pm3_shell,
+                        autorun=args.pm3_autorun,
+                        stdout=args.pm3_stdout or '',
+                        stderr=args.pm3_stderr or '')
+            print(p)
+            res = _post('new', p.dict())
+            if res['err']:
+                print(res)
+            else:
+                print('[green]OK[/green]')
+            #print(_new_test())
 
     elif args.subparser == 'rm':
         res = _get(f'rm/{args.id_or_name}')
+        if res['err']:
+            print(f"[red]{res['msg']}[/red]")
+        else:
+            print(f"[green]{res['msg']}[/green]")
+
+    elif args.subparser == 'start':
+        res = _get(f'start/{args.id_or_name}')
+        if res['err']:
+            print(f"[red]{res['msg']}[/red]")
+        else:
+            print(f"[green]{res['msg']}[/green]")
+
+    elif args.subparser == 'stop':
+        res = _get(f'stop/{args.id_or_name}')
         if res['err']:
             print(f"[red]{res['msg']}[/red]")
         else:
