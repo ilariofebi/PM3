@@ -8,7 +8,7 @@ with open("requirements.txt", "r") as fh:
 
 setuptools.setup(
     name="PM3",
-    version="0.0.2",
+    version="0.0.3",
     author="Ilario Febi",
     author_email="ilario@febi.biz",
     description="Like pm2 without node.js ;-)",
@@ -27,5 +27,5 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "pm3=PM3.cli:main",
-            "pm3_daemon=PM3.app:main"]}
+            "pm3_backend=PM3.app:main"]}
 )
