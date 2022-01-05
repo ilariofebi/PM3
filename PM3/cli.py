@@ -14,14 +14,14 @@ from pathlib import Path
 from configparser import ConfigParser
 import psutil
 import asyncio
-from pytailer import async_fail_tail
+#from pytailer import async_fail_tail
 
 #logging.basicConfig(level=logging.DEBUG)
 
-async def tailfile(proc):
-    with async_fail_tail(proc.stdout, lines=10) as tail:
-        async for line in tail:  # be careful: infinite loop!
-            print(line, end='', flush=True)
+#async def tailfile(proc):
+#    with async_fail_tail(proc.stdout, lines=10) as tail:
+#        async for line in tail:  # be careful: infinite loop!
+#            print(line, end='', flush=True)
 
 
 def _setup():
