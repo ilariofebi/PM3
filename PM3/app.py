@@ -50,7 +50,8 @@ def _insert_process(proc: Process, rewrite=False):
     proc.pm3_id = proc.pm3_id if proc.pm3_id != -1 else ptbl.next_id()
 
     if tbl.contains(where('pm3_name') == proc.pm3_name):
-        proc.pm3_name = f'{proc.pm3_name}_{proc.pm3_id}'
+        if not rewrite:
+            proc.pm3_name = f'{proc.pm3_name}_{proc.pm3_id}'
 
     if tbl.contains(where('pm3_id') == proc.pm3_id):
         if rewrite:

@@ -129,7 +129,7 @@ def _show_list(data):
         out.append(f"[cyan]### {row['pm3_name']} ({row['pm3_id']}) ###[/cyan]")
         for k, v in row.items():
             out.append(f'  {k}={v}')
-        return '\n'.join(out)
+    return '\n'.join(out)
 
 def _tabulate_ps(data):
     if len(data) == 0:
@@ -339,7 +339,6 @@ def main():
         res = _get(f'rm/{args.id_or_name}')
         _parse_retmsg_payload(res)
 
-
     elif args.subparser == 'start':
         res = _get(f'start/{args.id_or_name}')
         _parse_retmsg_payload(res)
@@ -351,17 +350,6 @@ def main():
     elif args.subparser == 'restart':
         res = _get(f'restart/{args.id_or_name}')
         _parse_retmsg_payload(res)
-
-    elif args.subparser == 'restart2':
-        res = _get(f'stop/{args.id_or_name}')
-        if res.err:
-            print(f"[red]{res.msg}[/red]")
-        else:
-            res = _get(f'start/{args.id_or_name}')
-            if res.err:
-                print(f"[red]{res.msg}[/red]")
-            else:
-                print(f"[green]{res.msg}[/green]")
 
     elif args.subparser == 'reset':
         res = _get(f'reset/{args.id_or_name}')
