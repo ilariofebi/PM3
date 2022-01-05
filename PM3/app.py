@@ -6,14 +6,15 @@ import time
 from flask import Flask, request
 from tinydb import TinyDB, where
 from PM3.model.process import Process
+from PM3.model.pm3_protocol import RetMsg
 import logging
-import json
 from collections import namedtuple
 from configparser import ConfigParser
 import dsnparse
 import psutil
 from pathlib import Path
 from PM3.libs.pm3table import Pm3Table
+import json
 
 pm3_home_dir = os.path.expanduser('~/.pm3')
 config_file = f'{pm3_home_dir}/config.ini'
@@ -37,13 +38,17 @@ ret_msg = namedtuple('RetMsg', 'msg, err')
 
 process_running_list = {}
 
+def _resp(res: RetMsg) -> dict:
+    if res.err:
+        logging.error(res.msg)
+    if res.warn:
+        logging.warning(res.msg)
+    return res.dict()
 
-def _kill_process(proc):
+def _kill_process(proc) -> str:
     pid = proc.pid
     if not proc.is_running:
-        msg = f'process {proc.pm3_name}(id={proc.pm3_id}) not running'
-        # TODO: aggiungere warning o una severity level e rendere il ret message almeno una named tupla
-        return {'msg': msg, 'err': False}
+        return 'NOT_RUNNING'
     else:
         if pid in process_running_list:
             process_running_list[pid].kill()
@@ -52,169 +57,179 @@ def _kill_process(proc):
         if proc.is_running:
             if proc.kill():
                 if not ptbl.update(proc):
-                    msg = f'Error updating {proc}'
-                    return {'msg': msg, 'err': True}
+                    return 'TBL_UPDATE_ERROR'
                 else:
-                    msg = f'process {proc.pm3_name}(id={proc.pm3_id}) with pid {pid} was killed'
-                    return {'msg': msg, 'err': False}
+                    return 'OK'
         else:
-            msg = f'process {proc.pm3_name}(id={proc.pm3_id}) with pid {pid} was killed'
-            return {'msg': msg, 'err': False}
+            return 'OK'
 
         time.sleep(2)
         if proc.is_running:
-            msg = f"Sorry, I can't stop pid={pid} :("
-            return {'msg': msg, 'err': True}
+            return 'CANT_STOP'
         else:
-            msg = f'process {proc.pm3_name}(id={proc.pm3_id}) with pid {pid} was killed'
-            return {'msg': msg, 'err': False}
+            return 'OK'
 
-@app.get("/ping")
-def pong():
-    msg = json.dumps({'pid': os.getpid()})
-    return ret_msg(msg, False)._asdict()
-
-@app.get("/status")
-def status():
-    ps = psutil.Process(os.getpid())
-    return ps.as_dict()
-
-@app.post("/new")
-def new_process():
-    logging.debug(request.json)
-    proc = Process(**request.json)
-
+def _insert_process(proc: Process, rewrite=False):
     proc.pm3_id = proc.pm3_id if proc.pm3_id != -1 else ptbl.next_id()
 
     if tbl.contains(where('pm3_name') == proc.pm3_name):
         proc.pm3_name = f'{proc.pm3_name}_{proc.pm3_id}'
 
     if tbl.contains(where('pm3_id') == proc.pm3_id):
-        msg = f'ID {proc.pm3_id} processo esistente'
-        logging.info(msg)
-        return {'msg': msg, 'err': True}
+        if rewrite:
+            tbl.remove(where('pm3_id') == proc.pm3_id)
+            tbl.insert(proc.dict())
+            return 'OK'
+        return 'ID_ALREADY_EXIST'
     elif tbl.contains(where('pm3_name') == proc.pm3_name):
-        msg = 'Nome processo esistente'
-        logging.info(msg)
-        return {'msg': msg, 'err': True}
+        return 'NAME_ALREADY_EXIST'
     else:
         tbl.insert(proc.dict())
-        msg = f'process {proc.pm3_name} with id={proc.pm3_id} was added'
-        return {'msg': msg, 'err': False}
+        return 'OK'
 
+@app.get("/ping")
+def pong():
+    payload = {'pid': os.getpid()}
+    return _resp(RetMsg(msg='PONG!', err=False, payload=payload))
+
+@app.post("/new")
+@app.post("/new/rewrite")
+def new_process():
+    logging.debug(request.json)
+    proc = Process(**request.json)
+    if 'rewrite' in request.path:
+        ret = _insert_process(proc, rewrite=True)
+    else:
+        ret = _insert_process(proc)
+
+    if ret == 'ID_ALREADY_EXIST':
+        msg = f'process with id={proc.pm3_id} already exist'
+        return _resp(RetMsg(msg=msg, warn=True))
+    elif ret == 'NAME_ALREADY_EXIST':
+        msg = f'process with name={proc.pm3_name} already exist'
+        return _resp(RetMsg(msg=msg, err=True))
+    elif ret == 'OK':
+        msg = f'process [bold]{proc.pm3_name}[/bold] with id={proc.pm3_id} was added'
+        return _resp(RetMsg(msg=msg, err=False))
+    else:
+        msg = f'Strange Error :('
+        return _resp(RetMsg(msg=msg, err=True))
+
+
+@app.get("/stop/<id_or_name>")
+@app.get("/restart/<id_or_name>")
 @app.get("/rm/<id_or_name>")
-def rm_process(id_or_name):
+def stop_and_rm_process(id_or_name):
+    resp_list = []
     ion = ptbl.find_id_or_name(id_or_name)
-
     if len(ion.proc) == 0:
         msg = f'process {ion.type}={ion.data} not found'
-        return {'msg': msg, 'err': True}
+        resp_list.append(_resp(RetMsg(msg=msg, err=True)))
 
-    ok_list_pm3_id = []
     for proc in ion.proc:
+        pid = proc.pid
         ret = _kill_process(proc)
-        if ret['err']:
-            return ret
-        else:
-            ok_list_pm3_id.append(proc.pm3_id)
-
-        if not ptbl.delete(proc):
+        if ret == 'OK':
+            msg = f'process {proc.pm3_name} (id={proc.pm3_id}) with pid {pid} was killed'
+            resp_list.append(_resp(RetMsg(msg=msg, err=False)))
+        elif ret == 'NOT_RUNNING':
+            msg = f'process {proc.pm3_name} (id={proc.pm3_id}) not running'
+            resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
+        elif ret == 'TBL_UPDATE_ERROR':
             msg = f'Error updating {proc}'
-            return {'msg': msg, 'err': True}
+            resp_list.append(_resp(RetMsg(msg=msg, err=True)))
+        elif ret == 'CANT_STOP':
+            msg = f"Sorry, I can't stop pid={proc.pid} :("
+            resp_list.append(_resp(RetMsg(msg=msg, err=True)))
 
-    msg = f'process id: {[i for i in ok_list_pm3_id]} was removed'
-    return {'msg': msg, 'err': False}
+        if request.path.startswith('/rm/'):
+            if not ptbl.delete(proc):
+                msg = f'Error updating {proc}'
+                resp_list.append(_resp(RetMsg(msg=msg, err=True)))
+            else:
+                msg = f'process {proc.pm3_name} (id={proc.pm3_id}) removed'
+                resp_list.append(_resp(RetMsg(msg=msg, err=False)))
 
-@app.get("/ls")
-def ls_process():
-    out = []
-    for p in tbl.all():
+    if request.path.startswith('/restart/'):
+        resp_list += start_process(id_or_name)['payload']
+
+    return _resp(RetMsg(msg='', payload=resp_list))
+
+@app.get("/ls/<id_or_name>")
+def ls_process(id_or_name):
+    payload = []
+    ion = ptbl.find_id_or_name(id_or_name)
+    for proc in ion.proc:
         # Trick for update pid
-        proc = Process(**p)
+        if proc.pid in process_running_list:
+            process_running_list[proc.pid].poll()
         proc.is_running
-        out.append(proc.dict())
-    return json.dumps(out)
+        ptbl.update(proc)
+        payload.append(proc)
+    return RetMsg(msg='OK', err=False, payload=payload).dict()
 
-@app.get("/pstatus/<id_or_name>")
+@app.get("/ps/<id_or_name>")
 def pstatus(id_or_name):
-    out = []
+    payload = []
     ion = ptbl.find_id_or_name(id_or_name)
     for proc in ion.proc:
         # Trick for update pid
         proc.is_running
-        out.append(proc)
-    #return json.dumps([psutil.Process(proc.pid).as_dict() for proc in out if proc.pid > 0])
-    return json.dumps([{**proc.dict(), **psutil.Process(proc.pid).as_dict()} for proc in out if proc.pid > 0])
+        if id_or_name == 0 and proc.pid != os.getpid():
+            proc.pid = os.getpid()
+        ptbl.update(proc)  # Aggiorno anche il database
+        payload.append(proc)
+
+    payload = [{**proc.dict(), **psutil.Process(proc.pid).as_dict()} for proc in payload if proc.pid > 0]
+    return _resp(RetMsg(msg='OK', err=False, payload=payload))
 
 @app.get("/reset/<id_or_name>")
 def reset(id_or_name):
+    resp_list = []
     ion = ptbl.find_id_or_name(id_or_name)
     for proc in ion.proc:
         proc.reset()
         if not ptbl.update(proc):
             msg = f'Error updating {proc}'
-            return {'msg': msg, 'err': True}
-
-    msg = f'process {[i.pm3_id for i in ion.proc]} counter reset'
-    return {'msg': msg, 'err': False}
-
+            resp_list.append(_resp(RetMsg(msg=msg, err=True)))
+        else:
+            msg = f'process {proc.pm3_name} (id={proc.pm3_id}) reset'
+            resp_list.append(_resp(RetMsg(msg=msg, err=False)))
+    return _resp(RetMsg(msg='', payload=resp_list))
 
 @app.get("/start/<id_or_name>")
 def start_process(id_or_name):
+    resp_list = []
     ion = ptbl.find_id_or_name(id_or_name)
     if len(ion.proc) == 0:
         msg = f'process {ion.type}={ion.data} not found'
-        return {'msg': msg, 'err': True}
+        resp_list.append(_resp(RetMsg(msg=msg, err=True)))
 
     for proc in ion.proc:
         if proc.is_running:
-            msg = f'process {proc.pm3_name}(id={proc.pm3_id}) already running with pid {proc.pid}'
-            return {'msg': msg, 'err': True}
+            msg = f'process {proc.pm3_name} (id={proc.pm3_id}) already running with pid {proc.pid}'
+            resp_list.append(_resp(RetMsg(msg=msg, err=True)))
         else:
             try:
                 p = proc.run()
                 process_running_list[proc.pid] = p
                 if not ptbl.update(proc):
                     msg = f'Error updating {proc}'
-                    return {'msg': msg, 'err': True}
+                    resp_list.append(_resp(RetMsg(msg=msg, err=True)))
             except FileNotFoundError as e:
                 print(e)
                 msg = f'File Not Found: {Path(proc.cwd,proc.cmd).as_posix()} ({ion.type}={ion.data})'
-                return {'msg': msg, 'err': True}
+                resp_list.append(_resp(RetMsg(msg=msg, err=True)))
             else:
-                msg = f'process {proc.pm3_name}(id={proc.pm3_id}) started with pid {proc.pid}'
-                return {'msg': msg, 'err': False}
+                msg = f'process {proc.pm3_name} (id={proc.pm3_id}) started with pid {proc.pid}'
+                resp_list.append(_resp(RetMsg(msg=msg, err=False)))
 
-
-    msg = f'Strange Error'
-    return {'msg': msg, 'err': True}
-
-@app.get("/stop/<id_or_name>")
-def stop_process(id_or_name):
-    ion = ptbl.find_id_or_name(id_or_name)
-    if len(ion.proc) == 0:
-        msg = f'process {ion.type}={ion.data} not found'
-        return {'msg': msg, 'err': True}
-
-    ok_list_pm3_id = []
-    for proc in ion.proc:
-        ret = _kill_process(proc)
-        if ret['err']:
-            return ret
-        else:
-            ok_list_pm3_id.append(proc.pm3_id)
-    msg = f'process id: {[i for i in ok_list_pm3_id]} was killed succesfully'
-    return {'msg': msg, 'err': False}
-
-
-
-
+    return _resp(RetMsg(msg='', payload=resp_list))
 
 
 #@crontab.job(minute="*")
 #def watchdog():
 #    print('cron')
-
 
 def main():
     url = config['main_section'].get('backend_url')

@@ -1,16 +1,19 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, root_validator
 from typing import Union
 import subprocess as sp
 import psutil
 import time
 import os
 from pathlib import Path
+import pendulum
 
 
 class ProcessStatusLight(BaseModel):
-    cmdline: list
+    pm3_id: int
+    pm3_name: str
+    cmdline: Union[list, str]
     cpu_percent: float
-    create_time: float
+    create_time: Union[float, str]
     cwd: Union[str, None]
     exe: str
     memory_percent: float
@@ -19,10 +22,25 @@ class ProcessStatusLight(BaseModel):
     status: str
     username: str
     cmd: str
-    pm3_name: str
-    pm3_id: int
     restart: int
     autorun: bool
+
+    @validator('memory_percent')
+    def memory_percent_formatter(cls, v):
+        v = round(v, 2)
+        return v
+
+    @validator('cmdline')
+    def cmdline_formatter(cls, v):
+        if isinstance(v, list):
+            v = ' '.join(v)
+        return v
+
+    @validator('create_time')
+    def create_time_formatter(cls, v):
+        if isinstance(v, float):
+            v = pendulum.from_timestamp(v).astimezone().format('DD/MM/YYYY HH:mm:ss')
+        return v
 
 class ProcessStatus(BaseModel):
     cmdline: list
@@ -59,37 +77,34 @@ class ProcessStatus(BaseModel):
 
 
 class Process(BaseModel):
-    cmd: str
-    interpreter: str = ''
-    cwd: str = Path.home().as_posix()
-    pm3_home: str = Path('~/.pm3/').expanduser().as_posix()
-    pm3_name: str
     pm3_id: int
+    pm3_name: str
+    cmd: str
+    cwd: str = Path.home().as_posix()
+    pid: int = -1
+    pm3_home: str = Path('~/.pm3/').expanduser().as_posix()
+    restart: int = 0
     shell: bool = False
+    autorun: bool = False
+    interpreter: str = ''
     stdout: str = ''
     stderr: str = ''
-    pid: int = -1
-    restart: int = 0
-    autorun: bool = False
     nohup: bool = False
 
-    @validator('pm3_name')
-    def pm3_name_formatter(cls, v, values):
-        v = v or values['cmd'].split(" ")[0]
-        v = v.replace(' ', '_').replace('./', '').replace('/', '')
-        return v
+    @root_validator
+    def _formatter(cls, values):
+        # pm3_name
+        values['pm3_name'] = values['pm3_name'] or values['cmd'].split(" ")[0]
+        values['pm3_name'] = values['pm3_name'].replace(' ', '_').replace('./', '').replace('/', '')
 
-    @validator('stdout')
-    def stdout_formatter(cls, v, values):
+        # stdout
         logfile = f"{values['pm3_name']}_{values['pm3_id']}.log"
-        v = v or Path(values['pm3_home'], logfile).as_posix()
-        return v
+        values['stdout'] = values['stdout'] or Path(values['pm3_home'], logfile).as_posix()
 
-    @validator('stderr')
-    def stderr_formatter(cls, v, values):
+        # stderr
         errfile = f"{values['pm3_name']}_{values['pm3_id']}.err"
-        v = v or Path(values['pm3_home'], errfile).as_posix()
-        return v
+        values['stderr'] = values['stderr'] or Path(values['pm3_home'], errfile).as_posix()
+        return values
 
     @property
     def is_running(self):
@@ -145,7 +160,7 @@ class Process(BaseModel):
             return False
         else:
             self.pid = -1
-            True
+            return True
 
     def run(self):
         fout = open(self.stdout, 'a')

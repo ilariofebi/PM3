@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 import json
 import time
-
-from tinydb import TinyDB, where
 import requests
-from tabulate import tabulate
-import argparse
+import argparse, argcomplete
 import logging
 from PM3.model.process import Process, ProcessStatus, ProcessStatusLight
+from PM3.model.pm3_protocol import RetMsg
 from rich import print
-from pprint import pprint
 from rich.table import Table
+from rich.console import Console
 import os, signal
 from pathlib import Path
 from configparser import ConfigParser
@@ -65,50 +63,108 @@ def _read_config():
     config.read(config_file)
     return config
 
-
-def _get(path):
+def _get(path) -> RetMsg:
     config = _read_config()
     base_url = config['main_section'].get('backend_url')
     r = requests.get(f'{base_url}/{path}')
     if r.status_code == 200:
-        return r.json()
+        ret = r.json()
+        return RetMsg(**ret)
     else:
-        return {}
+        return RetMsg(err=True, msg='Connection Error')
 
 def _post(path, jdata):
     config = _read_config()
     base_url = config['main_section'].get('backend_url')
     r = requests.post(f'{base_url}/{path}', json=jdata)
     if r.status_code == 200:
-        return r.json()
+        ret = r.json()
+        return RetMsg(**ret)
     else:
-        return {}
+        return RetMsg(err=True, msg='Connection Error')
 
-def _ls():
-    if res := _get('ls'):
-        #out = tabulate([tuple(i.values()) for i in res], headers=res[0].keys())
-        # TODO sorting by pm3_id
-        out = _tabulate(res)
-        return out
+def _parse_retmsg_payload(res: RetMsg):
+    if res.err:
+        print(f"[red]{res.msg}[/red]")
+    else:
+        for pi in res.payload:
+            pi = RetMsg(**pi)
+            if pi.err:
+                print(f"[red]{pi.msg}[/red]")
+            elif pi.warn:
+                print(f"[yellow]{pi.msg}[/yellow]")
+            else:
+                print(f"[green]{pi.msg}[/green]")
+
+def _ls(id_or_name='all', format='table'):
+    res = _get(f'ls/{id_or_name}')
+    if res:
+        payload_sorted = sorted(res.payload, key=lambda item: item.get("pm3_id"))
+        if format == 'table':
+            return _tabulate_ls(payload_sorted)
+        else:
+            return _show_list(payload_sorted)
     else:
         return '[yellow]there is nothing to look at[/yellow]'
 
-def _tabulate(data):
+def _ps(id_or_name='all', format='table'):
+    res = _get(f'ps/{id_or_name}')
+    if res:
+        payload_sorted = sorted(res.payload, key=lambda item: item.get("pm3_id"))
+        if format == 'table':
+            return _tabulate_ps(payload_sorted)
+        else:
+            payload_sorted = [ProcessStatus(**p).dict() for p in payload_sorted]
+            return _show_list(payload_sorted)
+    else:
+        return '[yellow]there is nothing to look at[/yellow]'
+
+def _show_list(data):
+    out = []
+    for row in data:
+        out.append('')
+        out.append(f"[cyan]### {row['pm3_name']} ({row['pm3_id']}) ###[/cyan]")
+        for k, v in row.items():
+            out.append(f'  {k}={v}')
+        return '\n'.join(out)
+
+def _tabulate_ps(data):
     if len(data) == 0:
         return '[yellow]there is nothing to look at[/yellow]'
-    from rich.console import Console
+    c = Console()
+
+    table = Table(show_header=True, header_style="bold green")
+
+    for n, r in enumerate(data):
+        r = ProcessStatusLight(**r).dict()  # Validate and sort
+        if n == 0:
+            for h in r.keys():
+                table.add_column(h)
+
+        items = []
+        for k, v in r.items():
+            items.append(c.render_str(str(v)))
+        table.add_row(*items)
+    return table
+
+def _tabulate_ls(data):
+    if len(data) == 0:
+        return '[yellow]there is nothing to look at[/yellow]'
     c = Console()
 
     table = Table(show_header=True, header_style="bold yellow")
-    for h in data[0].keys():
-        table.add_column(h)
 
-    for r in data:
+    for n, r in enumerate(data):
+        r = Process(**r).dict()  # Validate and sort
+        if n == 0:
+            for h in r.keys():
+                table.add_column(h)
+
         items = []
         for k, v in r.items():
-            if r['autorun'] is True and k == 'pid' and v == -1:
+            if 'autorun' in r and r['autorun'] is True and k == 'pid' and v == -1:
                 items.append(f'[red]!!![/red]')
-            elif r['autorun'] is False and k == 'pid' and v == -1:
+            elif 'autorun' in r and r['autorun'] is False and k == 'pid' and v == -1:
                 items.append(f'[gray]-[/gray]')
             else:
                 items.append(c.render_str(str(v)))
@@ -133,27 +189,27 @@ def _ping():
     try:
         res = _get('ping')
     except requests.exceptions.ConnectionError as e:
-        res = {'err': True, 'msg': e}
+        res = RetMsg(err=True, msg=str(e))
     return res
 
 
 def main():
     config = _read_config()
-    db = TinyDB(config['main_section'].get('pm3_db'))
-    tbl = db.table(config['main_section'].get('pm3_db_process_table'))
     pm3_home_dir = config['main_section'].get('pm3_home_dir')
 
     parser = argparse.ArgumentParser(prog='pm3', description='Like pm2 without node.js')
     subparsers = parser.add_subparsers(dest='subparser')
 
-    parser_ls = subparsers.add_parser('ls', help='show process')
-    parser_ls.add_argument('id_or_name', const='all', nargs='?', type=str, help='Start id or process name')
-    parser_ls.add_argument('-l', '--long', action='store_true', help='Status Process')
+    parser_ls = subparsers.add_parser('ls', help='process list')
+    parser_ls.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
+    parser_ls.add_argument('-l', '--list', action='store_true', help='List format')
+
+    parser_ps = subparsers.add_parser('ps', help='process status')
+    parser_ps.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
+    parser_ps.add_argument('-l', '--list', action='store_true', help='List format')
 
     parser_daemon = subparsers.add_parser('daemon', help='Daemon options')
-    parser_daemon.add_argument('-s', '--start', action='store_true', help='Start daemon')
-    parser_daemon.add_argument('-S', '--stop', action='store_true', help='Stop daemon')
-    parser_daemon.add_argument('-t', '--status', action='store_true', help='Status Info')
+    parser_daemon.add_argument('what', default='status', const='status', nargs='?', choices=['start', 'stop', 'status'])
 
     parser_ping = subparsers.add_parser('ping', help='Ensure pm3 daemon has been launched')
     parser_ping.add_argument('-v', '--verbose', action='store_true', help='verbose')
@@ -194,17 +250,29 @@ def main():
     parser_err = subparsers.add_parser('err', help='show log for a process')
     parser_err.add_argument('id_or_name', help='Show Errors for id or process name')
 
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
     kwargs = vars(args)
     logging.debug(kwargs)
 
-    if args.subparser == 'daemon':
+    if args.subparser == 'ping':
         res = _ping()
-        if not res['err']:
-            msg = json.loads(res['msg'])
+        if res.err:
+            print('[red]ERROR[/red]')
+            if args.verbose:
+                print(res.msg)
+        else:
+            print('[green]PONG![/green]')
+            if args.verbose:
+                print(res.payload)
 
-        if args.start:
-            if not res['err']:
+    elif args.subparser == 'daemon':
+        res = _ping()
+        if not res.err:
+            msg = res.payload
+
+        if args.what == 'start':
+            if not res.err:
                 print(f"process running on pid {msg['pid']}")
             else:
                 backend = Process(cmd=config['main_section'].get('backend_start_command'),
@@ -217,61 +285,34 @@ def main():
                                   stderr=f'{pm3_home_dir}/__backend__.err')
                 p = backend.run()
                 time.sleep(2)
-                res = _post('new', backend.dict())
-                # TODO: BUG se il processo esiste in tabella esce un errore
-                if res['err']:
+                # TODO: Verificare se il processo è running
+                res = _post('new/rewrite', backend.dict())
+                if res.err:
                     print(res)
                 else:
-                    print('[green]process starting[/green]')
+                    print('[green]process started[/green]')
 
 
-        if args.stop:
-            if not res['err']:
+        if args.what == 'stop':
+            if not res.err:
                 os.kill(msg['pid'], signal.SIGKILL)
                 print(f"send kill sig to pid {msg['pid']}")
             else:
                 print('process already stopped')
                 #print(res)
 
-        if args.status:
-            #res = _get('status')
-            #print(res)
-            #print(ProcessStatus(**res))
-            res = _get(f'pstatus/0')
-            if res:
-                _show_status(res, light=False)
-                # pprint([ProcessStatus(**proc).dict() for proc in res][0])
-            else:
-                print('[yellow]there is nothing to look at[/yellow]')
-
-    elif args.subparser == 'ping':
-        res = _ping()
-        if res['err']:
-            print('[red]ERROR[/red]')
-            if args.verbose:
-                print(res['msg'])
-        else:
-            print('[green]PONG![/green]')
-            if args.verbose:
-                print(res['msg'])
+        if args.what == 'status':
+            print(_ps(0, 'list'))
 
     elif args.subparser == 'ls':
-        #res = _get(f'ls/{args.id_or_name}')
-        if args.id_or_name is None:
-            if ls := _ls():
-                print(ls)
-            else:
-                print('[yellow]there is nothing to look at[/yellow]')
-        else:
-            res = _get(f'pstatus/{args.id_or_name}')
-            if res:
-                if args.long:
-                    _show_status(res, light=False)
-                else:
-                    _show_status(res)
-                #pprint([ProcessStatus(**proc).dict() for proc in res][0])
-            else:
-                print('[yellow]there is nothing to look at[/yellow]')
+        id_or_name = args.id_or_name or 'all'
+        format_ = 'list' if args.list else 'table'
+        print(_ls(id_or_name, format_))
+
+    elif args.subparser == 'ps':
+        id_or_name = args.id_or_name or 'all'
+        format_ = 'list' if args.list else 'table'
+        print(_ps(id_or_name, format_))
 
     elif args.subparser == 'new':
         p = Process(cmd=args.cmd,
@@ -284,49 +325,42 @@ def main():
                     stdout=args.pm3_stdout or '',
                     stderr=args.pm3_stderr or '')
         res = _post('new', p.dict())
-        if res['err']:
+        if res.err:
             print(res)
         else:
-            print(f"[green]{res['msg']}[/green]")
+            print(f"[green]{res.msg}[/green]")
 
     elif args.subparser == 'rm':
         res = _get(f'rm/{args.id_or_name}')
-        if res['err']:
-            print(f"[red]{res['msg']}[/red]")
-        else:
-            print(f"[green]{res['msg']}[/green]")
+        _parse_retmsg_payload(res)
+
 
     elif args.subparser == 'start':
         res = _get(f'start/{args.id_or_name}')
-        if res['err']:
-            print(f"[red]{res['msg']}[/red]")
-        else:
-            print(f"[green]{res['msg']}[/green]")
+        _parse_retmsg_payload(res)
 
     elif args.subparser == 'stop':
         res = _get(f'stop/{args.id_or_name}')
-        if res['err']:
-            print(f"[red]{res['msg']}[/red]")
-        else:
-            print(f"[green]{res['msg']}[/green]")
+        _parse_retmsg_payload(res)
 
     elif args.subparser == 'restart':
+        res = _get(f'restart/{args.id_or_name}')
+        _parse_retmsg_payload(res)
+
+    elif args.subparser == 'restart2':
         res = _get(f'stop/{args.id_or_name}')
-        if res['err']:
-            print(f"[red]{res['msg']}[/red]")
+        if res.err:
+            print(f"[red]{res.msg}[/red]")
         else:
             res = _get(f'start/{args.id_or_name}')
-            if res['err']:
-                print(f"[red]{res['msg']}[/red]")
+            if res.err:
+                print(f"[red]{res.msg}[/red]")
             else:
-                print(f"[green]{res['msg']}[/green]")
+                print(f"[green]{res.msg}[/green]")
 
     elif args.subparser == 'reset':
         res = _get(f'reset/{args.id_or_name}')
-        if res['err']:
-            print(f"[red]{res['msg']}[/red]")
-        else:
-            print(f"[green]{res['msg']}[/green]")
+        _parse_retmsg_payload(res)
 
     #elif args.subparser == 'log':
         #ion = find_id_or_name(tbl, args.id_or_name)
