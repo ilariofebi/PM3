@@ -109,15 +109,18 @@ def _ls(id_or_name='all', format='table'):
 
 def _ps(id_or_name='all', format='table'):
     res = _get(f'ps/{id_or_name}')
-    if res:
-        payload_sorted = sorted(res.payload, key=lambda item: item.get("pm3_id"))
-        if format == 'table':
-            return _tabulate_ps(payload_sorted)
+    if not res.err:
+        if res.payload:
+            payload_sorted = sorted(res.payload, key=lambda item: item.get("pm3_id"))
+            if format == 'table':
+                return _tabulate_ps(payload_sorted)
+            else:
+                payload_sorted = [ProcessStatus(**p).dict() for p in payload_sorted]
+                return _show_list(payload_sorted)
         else:
-            payload_sorted = [ProcessStatus(**p).dict() for p in payload_sorted]
-            return _show_list(payload_sorted)
+            return '[yellow]there is nothing to look at[/yellow]'
     else:
-        return '[yellow]there is nothing to look at[/yellow]'
+        return f'[red]{res.msg}[/red]'
 
 def _show_list(data):
     out = []
@@ -224,6 +227,7 @@ def main():
     parser_new.add_argument('--autorun', dest='pm3_autorun', action='store_true', help='process autorun after reboot')
     parser_new.add_argument('--stdout', dest='pm3_stdout', help='std out')
     parser_new.add_argument('--stderr', dest='pm3_stderr', help='std err')
+    parser_new.add_argument('--interpreter', dest='interpreter', help='interpreter path')
 
     parser_start = subparsers.add_parser('start', help='start a process by id or name')
     parser_start.add_argument('id_or_name', help='Start id or process name')
@@ -319,6 +323,7 @@ def main():
                     cwd=args.cwd or Path.home().as_posix(),
                     pm3_name=args.pm3_name or '',
                     pm3_id=args.pm3_id or -1,
+                    interpreter=args.interpreter or '',
                     nohup=args.nohup,
                     shell=args.pm3_shell,
                     autorun=args.pm3_autorun,

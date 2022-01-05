@@ -6,7 +6,14 @@ import time
 import os
 from pathlib import Path
 import pendulum
+import signal
 
+class KillMsg(BaseModel):
+    msg: str = ''
+    err: bool = False
+    warn: bool = False
+    gone: list = []
+    alive: list = []
 
 class ProcessStatusLight(BaseModel):
     pm3_id: int
@@ -18,6 +25,7 @@ class ProcessStatusLight(BaseModel):
     exe: str
     memory_percent: float
     name: str
+    ppid: int
     pid: int
     status: str
     username: str
@@ -131,36 +139,43 @@ class Process(BaseModel):
         else:
             return ProcessStatus(**psutil.Process(self.pid).as_dict())
 
+    @staticmethod
+    def kill_proc_tree(pid, sig=signal.SIGTERM, include_parent=True,
+                       timeout=None, on_terminate=None):
+        """Kill a process tree (including grandchildren) with signal
+        "sig" and return a (gone, still_alive) tuple.
+        "on_terminate", if specified, is a callback function which is
+        called as soon as a child terminates.
+        """
+        parent = psutil.Process(pid)
+        # Kill Parent and Children
+        children = parent.children(recursive=True)
+        if include_parent:
+            children.append(parent)
+
+        for p in children:
+            try:
+                p.send_signal(sig)
+            except psutil.NoSuchProcess:
+                pass
+        gone, alive = psutil.wait_procs(children, timeout=timeout,
+                                        callback=on_terminate)
+        return (gone, alive)
+
     def kill(self):
         if self.pid == -1:
-            return None
-
+            return KillMsg(msg='NOT RUNNING', warn=True)
         try:
-            ps = psutil.Process(self.pid)
+            psutil.Process(self.pid)
         except psutil.NoSuchProcess:
-            # Process already killed
-            return None
+            return KillMsg(msg='NO SUCH PROCESS', warn=True)
 
-        if ps.is_running():
-            for proc in ps.children(recursive=True):
-                print(proc.pid)
-                proc.kill()
-            ps.kill()
-
-        if ps.is_running():
-            time.sleep(3)
-
-        if ps.is_running():
-            for proc in ps.children(recursive=True):
-                print(proc.pid)
-                ps.terminate()
-            ps.terminate()
-
-        if ps.is_running():
-            return False
+        gone, alive = self.kill_proc_tree(self.pid)
+        if len(alive) > 0:
+            return KillMsg(msg='OK', alive=alive, gone=gone, warn=True)
         else:
             self.pid = -1
-            return True
+            return KillMsg(msg='OK', alive=alive, gone=gone)
 
     def run(self):
         fout = open(self.stdout, 'a')

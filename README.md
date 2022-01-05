@@ -23,3 +23,9 @@ register-python-argcomplete --shell fish $pm3_exe > ~/.config/fish/completions/p
 
 ### Other shell
 visit https://kislyuk.github.io/argcomplete/
+
+
+## TODO
+- sarebbe bello poter inserire piu' id insieme: Es: pm3 rm 1 2 3
+- I log e gli err non si vedono, sembra un problema di flushing, forse si risolve con popen.communicate
+  - eventualmente inserire nel cron o nel tail

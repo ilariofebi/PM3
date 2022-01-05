@@ -14,6 +14,7 @@ import dsnparse
 import psutil
 from pathlib import Path
 from PM3.libs.pm3table import Pm3Table
+import signal
 import json
 
 pm3_home_dir = os.path.expanduser('~/.pm3')
@@ -45,30 +46,6 @@ def _resp(res: RetMsg) -> dict:
         logging.warning(res.msg)
     return res.dict()
 
-def _kill_process(proc) -> str:
-    pid = proc.pid
-    if not proc.is_running:
-        return 'NOT_RUNNING'
-    else:
-        if pid in process_running_list:
-            process_running_list[pid].kill()
-            process_running_list[pid].wait()
-
-        if proc.is_running:
-            if proc.kill():
-                if not ptbl.update(proc):
-                    return 'TBL_UPDATE_ERROR'
-                else:
-                    return 'OK'
-        else:
-            return 'OK'
-
-        time.sleep(2)
-        if proc.is_running:
-            return 'CANT_STOP'
-        else:
-            return 'OK'
-
 def _insert_process(proc: Process, rewrite=False):
     proc.pm3_id = proc.pm3_id if proc.pm3_id != -1 else ptbl.next_id()
 
@@ -86,6 +63,18 @@ def _insert_process(proc: Process, rewrite=False):
     else:
         tbl.insert(proc.dict())
         return 'OK'
+
+def ps_proc_as_dict(ps_proc):
+    '''
+    Versione corretta di psutil.Process().as_dict()
+    La versione originale non aggiorna i valori di CPU
+    :param ps_proc:
+    :return:
+    '''
+    ppad = ps_proc.as_dict()
+    ppad['cpu_percent'] = ps_proc.cpu_percent(interval=0.1)
+    return ppad
+
 
 @app.get("/ping")
 def pong():
@@ -127,20 +116,21 @@ def stop_and_rm_process(id_or_name):
         resp_list.append(_resp(RetMsg(msg=msg, err=True)))
 
     for proc in ion.proc:
-        pid = proc.pid
-        ret = _kill_process(proc)
-        if ret == 'OK':
-            msg = f'process {proc.pm3_name} (id={proc.pm3_id}) with pid {pid} was killed'
-            resp_list.append(_resp(RetMsg(msg=msg, err=False)))
-        elif ret == 'NOT_RUNNING':
+        ret = proc.kill()
+        if ret.msg == 'OK':
+            ptbl.update(proc)
+            for pk in ret.gone:
+                msg = f'process {proc.pm3_name} (id={proc.pm3_id}) with pid {pk.pid} was killed'
+                resp_list.append(_resp(RetMsg(msg=msg, err=False)))
+            for pk in ret.alive:
+                msg = f'process {proc.pm3_name} (id={proc.pm3_id}) with pid {pk.pid} still alive'
+                resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
+        elif ret.warn:
             msg = f'process {proc.pm3_name} (id={proc.pm3_id}) not running'
             resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
-        elif ret == 'TBL_UPDATE_ERROR':
-            msg = f'Error updating {proc}'
-            resp_list.append(_resp(RetMsg(msg=msg, err=True)))
-        elif ret == 'CANT_STOP':
-            msg = f"Sorry, I can't stop pid={proc.pid} :("
-            resp_list.append(_resp(RetMsg(msg=msg, err=True)))
+        else:
+            msg = f'Strange Error'
+            resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
 
         if request.path.startswith('/rm/'):
             if not ptbl.delete(proc):
@@ -170,7 +160,7 @@ def ls_process(id_or_name):
 
 @app.get("/ps/<id_or_name>")
 def pstatus(id_or_name):
-    payload = []
+    procs = []
     ion = ptbl.find_id_or_name(id_or_name)
     for proc in ion.proc:
         # Trick for update pid
@@ -178,9 +168,17 @@ def pstatus(id_or_name):
         if id_or_name == 0 and proc.pid != os.getpid():
             proc.pid = os.getpid()
         ptbl.update(proc)  # Aggiorno anche il database
-        payload.append(proc)
+        procs.append(proc)
 
-    payload = [{**proc.dict(), **psutil.Process(proc.pid).as_dict()} for proc in payload if proc.pid > 0]
+    payload = []
+    for proc in procs:
+        if proc.pid > 0:
+            payload.append({**proc.dict(), **ps_proc_as_dict(psutil.Process(proc.pid))})
+
+            # Children process
+            for ps_proc in psutil.Process(proc.pid).children(recursive=True):
+                payload.append({**proc.dict(), **ps_proc_as_dict(ps_proc)})
+
     return _resp(RetMsg(msg='OK', err=False, payload=payload))
 
 @app.get("/reset/<id_or_name>")

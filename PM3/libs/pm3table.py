@@ -40,11 +40,16 @@ class Pm3Table:
         else:
             return False
 
-    def find_id_or_name(self, id_or_name):
+    def find_id_or_name(self, id_or_name, hidden=False):
         ION = namedtuple('Id_or_Name', 'type, data, proc')
 
         if id_or_name == 'all':
-            out = ION('special', id_or_name, [Process(**i) for i in self.tbl.all() if i['pm3_name'] != '__backend__'])
+            if hidden:
+                out = ION('special', id_or_name, [Process(**i) for i in self.tbl.all()])
+            else:
+                out = ION('special',
+                          id_or_name,
+                          [Process(**i) for i in self.tbl.all() if i['pm3_name'] != '__backend__'])
             return out
 
         try:
