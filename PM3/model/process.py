@@ -199,13 +199,15 @@ class Process(BaseModel):
                          shell=self.shell,
                          stdout=fout,
                          stderr=ferr,
+                         bufsize=0,
                          preexec_fn=os.setpgrp)
         else:
             p = sp.Popen(cmd,
                          cwd=self.cwd,
                          shell=self.shell,
                          stdout=fout,
-                         stderr=ferr)
+                         stderr=ferr,
+                         bufsize=0)
         self.pid = p.pid
         self.restart += 1
         return p

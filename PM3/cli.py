@@ -14,15 +14,14 @@ from pathlib import Path
 from configparser import ConfigParser
 import psutil
 import asyncio
-#from pytailer import async_fail_tail
+from pytailer import async_fail_tail
 
 #logging.basicConfig(level=logging.DEBUG)
 
-#async def tailfile(proc):
-#    with async_fail_tail(proc.stdout, lines=10) as tail:
-#        async for line in tail:  # be careful: infinite loop!
-#            print(line, end='', flush=True)
-
+async def tailfile(f):
+    with async_fail_tail(f, lines=10) as tail:
+        async for line in tail:  # be careful: infinite loop!
+            print(line, end='', flush=True)
 
 def _setup():
     pm3_home_dir = Path('~/.pm3').expanduser()
@@ -355,11 +354,17 @@ def main():
         res = _get(f'reset/{args.id_or_name}')
         _parse_retmsg_payload(res)
 
-    #elif args.subparser == 'log':
-        #ion = find_id_or_name(tbl, args.id_or_name)
-        #print(ion)
-        #if len(ion.proc) == 1:
-        #    asyncio.run(tailfile(ion.proc[0]))
+    elif args.subparser == 'log':
+        res = _get(f'ls/{args.id_or_name}')
+        if res and not res.err:
+            for p in res.payload:
+                #print(p)
+                stdout = p['stdout']
+                try:
+                    asyncio.run(tailfile(stdout))
+                except KeyboardInterrupt:
+                    #print('CTRL+C')
+                    pass
 
     else:
         print(parser.format_help())
