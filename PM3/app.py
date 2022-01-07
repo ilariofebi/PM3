@@ -76,7 +76,6 @@ def ps_proc_as_dict(ps_proc):
     ppad['cpu_percent'] = ps_proc.cpu_percent(interval=0.1)
     return ppad
 
-
 @app.get("/ping")
 def pong():
     payload = {'pid': os.getpid()}
@@ -154,13 +153,6 @@ def ls_process(id_or_name):
         # Trick for update pid
         if proc.pid in process_running_list:
             process_running_list[proc.pid].poll()
-            '''
-            try:
-                import subprocess
-                out, err = process_running_list[proc.pid].communicate(None, 0.1)
-            except subprocess.TimeoutExpired:
-                pass
-            '''
         proc.is_running
         ptbl.update(proc)
         payload.append(proc)

@@ -62,6 +62,45 @@ def _read_config():
     config.read(config_file)
     return config
 
+def _make_systemd_init_script():
+    config = _read_config()
+    pm3_service = '''#!/bin/bash
+
+cat << EOF > /etc/systemd/system/pm3.service
+[Unit]
+Description=PM3 Backend
+After=network.target
+
+[Service]
+User={}
+Type=simple
+ExecStart={}
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+echo 'file /etc/systemd/system/pm3.service written'
+
+echo 'systemctl daemon-reload'
+systemctl daemon-reload
+
+echo 'systemctl enable pm3'
+systemctl enable pm3
+
+echo 'systemctl start pm3'
+systemctl start pm3
+systemctl is-active pm3
+'''
+    backend_start_interpreter = config['main_section'].get('backend_start_interpreter')
+    backend_start_command = config['main_section'].get('backend_start_command')
+    exec_start = f'{backend_start_interpreter} {backend_start_command}' if backend_start_interpreter else backend_start_command
+    with open('systemd.sh', 'w') as f:
+        f.write(pm3_service.format(os.getlogin(), exec_start))
+        print('file systemd.sh generated')
+    print('now execute:\n sudo bash systemd.sh')
+
+
 def _get(path) -> RetMsg:
     config = _read_config()
     base_url = config['main_section'].get('backend_url')
@@ -202,6 +241,13 @@ def main():
     parser = argparse.ArgumentParser(prog='pm3', description='Like pm2 without node.js')
     subparsers = parser.add_subparsers(dest='subparser')
 
+    parser_daemon = subparsers.add_parser('daemon', help='Daemon options')
+    parser_daemon.add_argument('what', default='status', const='status', nargs='?',
+                               choices=['start', 'stop', 'status', 'systemd'])
+
+    parser_ping = subparsers.add_parser('ping', help='Ensure pm3 daemon has been launched')
+    parser_ping.add_argument('-v', '--verbose', action='store_true', help='verbose')
+
     parser_ls = subparsers.add_parser('ls', help='process list')
     parser_ls.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
     parser_ls.add_argument('-l', '--list', action='store_true', help='List format')
@@ -209,12 +255,6 @@ def main():
     parser_ps = subparsers.add_parser('ps', help='process status')
     parser_ps.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
     parser_ps.add_argument('-l', '--list', action='store_true', help='List format')
-
-    parser_daemon = subparsers.add_parser('daemon', help='Daemon options')
-    parser_daemon.add_argument('what', default='status', const='status', nargs='?', choices=['start', 'stop', 'status'])
-
-    parser_ping = subparsers.add_parser('ping', help='Ensure pm3 daemon has been launched')
-    parser_ping.add_argument('-v', '--verbose', action='store_true', help='verbose')
 
     parser_new = subparsers.add_parser('new', help='create a new process')
     parser_new.add_argument('cmd', help='linux command')
@@ -307,6 +347,9 @@ def main():
         if args.what == 'status':
             print(_ps(0, 'list'))
 
+        if args.what == 'systemd':
+            _make_systemd_init_script()
+
     elif args.subparser == 'ls':
         id_or_name = args.id_or_name or 'all'
         format_ = 'list' if args.list else 'table'
@@ -354,14 +397,18 @@ def main():
         res = _get(f'reset/{args.id_or_name}')
         _parse_retmsg_payload(res)
 
-    elif args.subparser == 'log':
+    elif args.subparser in ('log', 'err'):
         res = _get(f'ls/{args.id_or_name}')
         if res and not res.err:
             for p in res.payload:
                 #print(p)
-                stdout = p['stdout']
+                if args.subparser == 'log':
+                    ftt = p['stdout']
+                else:
+                    ftt = p['stderr']
+
                 try:
-                    asyncio.run(tailfile(stdout))
+                    asyncio.run(tailfile(ftt))
                 except KeyboardInterrupt:
                     #print('CTRL+C')
                     pass
