@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import sys
 import time
 import requests
 import argparse, argcomplete
@@ -22,6 +23,12 @@ async def tailfile(f):
     with async_fail_tail(f, lines=10) as tail:
         async for line in tail:  # be careful: infinite loop!
             print(line, end='', flush=True)
+
+def _clean_ls_proc(p: dict) -> dict:
+    p.pop('pid')
+    p.pop('restart')
+    p.pop('pm3_home')
+    return p
 
 def _setup():
     pm3_home_dir = Path('~/.pm3').expanduser()
@@ -121,10 +128,12 @@ def _post(path, jdata):
     else:
         return RetMsg(err=True, msg='Connection Error')
 
-def _parse_retmsg_payload(res: RetMsg):
+#def _parse_retmsg_payload(res: RetMsg):
+def _parse_retmsg(res: RetMsg):
     if res.err:
         print(f"[red]{res.msg}[/red]")
-    else:
+
+    if res.payload:
         for pi in res.payload:
             pi = RetMsg(**pi)
             if pi.err:
@@ -133,6 +142,13 @@ def _parse_retmsg_payload(res: RetMsg):
                 print(f"[yellow]{pi.msg}[/yellow]")
             else:
                 print(f"[green]{pi.msg}[/green]")
+
+    else:
+        if res.warn:
+            print(f"[yellow]{res.msg}[/yellow]")
+        else:
+            print(f"[green]{res.msg}[/green]")
+
 
 def _ls(id_or_name='all', format='table'):
     res = _get(f'ls/{id_or_name}')
@@ -293,6 +309,15 @@ def main():
     parser_err = subparsers.add_parser('err', help='show log for a process')
     parser_err.add_argument('id_or_name', help='Show Errors for id or process name')
 
+    parser_dump = subparsers.add_parser('dump', help='dump process in file')
+    parser_dump.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
+    parser_dump.add_argument('-f', '--file', dest='dump_file', help='dump into file', required=False)
+
+    parser_load = subparsers.add_parser('load', help='load process from a file')
+    #parser_load.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name to import')
+    parser_load.add_argument('-f', '--file', dest='load_file', help='load from this file', required=True)
+    parser_load.add_argument('-y', '--yes', dest='load_yes', action='store_true', help='response always yes')
+
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
     kwargs = vars(args)
@@ -379,23 +404,23 @@ def main():
 
     elif args.subparser == 'rm':
         res = _get(f'rm/{args.id_or_name}')
-        _parse_retmsg_payload(res)
+        _parse_retmsg(res)
 
     elif args.subparser == 'start':
         res = _get(f'start/{args.id_or_name}')
-        _parse_retmsg_payload(res)
+        _parse_retmsg(res)
 
     elif args.subparser == 'stop':
         res = _get(f'stop/{args.id_or_name}')
-        _parse_retmsg_payload(res)
+        _parse_retmsg(res)
 
     elif args.subparser == 'restart':
         res = _get(f'restart/{args.id_or_name}')
-        _parse_retmsg_payload(res)
+        _parse_retmsg(res)
 
     elif args.subparser == 'reset':
         res = _get(f'reset/{args.id_or_name}')
-        _parse_retmsg_payload(res)
+        _parse_retmsg(res)
 
     elif args.subparser in ('log', 'err'):
         res = _get(f'ls/{args.id_or_name}')
@@ -412,6 +437,42 @@ def main():
                 except KeyboardInterrupt:
                     #print('CTRL+C')
                     pass
+
+    elif args.subparser == 'dump':
+        res = _get(f"ls/{args.id_or_name or 'all'}")
+
+        if res and not res.err:
+            out = [_clean_ls_proc(p) for p in res.payload if p['pm3_id'] != 0]
+            if args.dump_file:
+                with open(Path(args.dump_file).as_posix(), 'w') as f:
+                    json.dump(out, fp=f, indent=4)
+
+            else:
+                print(json.dumps(out, indent=4))
+
+    elif args.subparser == 'load':
+        load_file = Path(args.load_file).as_posix()
+        if not load_file.endswith('.json'):
+            print('File to load must be a json file')
+            sys.exit(1)
+
+        with open(load_file, 'r') as f:
+            prl = json.load(f)
+        for pr in prl:
+            #print(pr)
+            p = Process(**pr)
+            if args.load_yes:
+                r = 'y'
+            else:
+                r = input(f'do you want load {p.pm3_name} ({p.pm3_id}) ?')
+
+            if r == 'y':
+                res = _post('new', p.dict())
+                _parse_retmsg(res)
+            elif r == 'n':
+                print(f'[yellow]skip import {p.pm3_name} ({p.pm3_id})[/yellow]')
+            else:
+                print(f'[red]only y or n are accepted... skip[/red]')
 
     else:
         print(parser.format_help())

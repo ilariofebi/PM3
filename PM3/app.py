@@ -232,7 +232,7 @@ def start_process(id_or_name):
 def main():
     url = config['main_section'].get('backend_url')
     dsn = dsnparse.parse(url)
-
+    # TODO: Update del pid os.getpid() per il processo __backend__
     app.run(debug=True, host=dsn.host, port=dsn.port)
 
 if __name__ == '__main__':

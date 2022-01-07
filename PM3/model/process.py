@@ -91,7 +91,7 @@ class Process(BaseModel):
     cwd: str = Path.home().as_posix()
     pid: int = -1
     pm3_home: str = Path('~/.pm3/').expanduser().as_posix()
-    restart: int = 0
+    restart: int = -1
     shell: bool = False
     autorun: bool = False
     interpreter: str = ''
