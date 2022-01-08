@@ -19,8 +19,8 @@ from pytailer import async_fail_tail
 
 #logging.basicConfig(level=logging.DEBUG)
 
-async def tailfile(f):
-    with async_fail_tail(f, lines=10) as tail:
+async def tailfile(f, lines=10):
+    with async_fail_tail(f, lines=lines) as tail:
         async for line in tail:  # be careful: infinite loop!
             print(line, end='', flush=True)
 
@@ -304,10 +304,14 @@ def main():
     parser_rename.add_argument('-n', '--name', dest='pm3_name', help='name into pm3', required=True)
 
     parser_log = subparsers.add_parser('log', help='show log for a process')
-    parser_log.add_argument('id_or_name', help='Show Log for id or process name')
+    parser_log.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
+    parser_log.add_argument('-f', '--follow', action='store_true', help='tail follow')
+    parser_log.add_argument('-n', '--lines', const=10, default=10, nargs='?', type=int, help='how many lines')
 
     parser_err = subparsers.add_parser('err', help='show log for a process')
-    parser_err.add_argument('id_or_name', help='Show Errors for id or process name')
+    parser_err.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
+    parser_err.add_argument('-f', '--follow', action='store_true', help='tail follow')
+    parser_err.add_argument('-n', '--lines', const=10, default=10, nargs='?', type=int, help='how many lines')
 
     parser_dump = subparsers.add_parser('dump', help='dump process in file')
     parser_dump.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
@@ -423,17 +427,26 @@ def main():
         _parse_retmsg(res)
 
     elif args.subparser in ('log', 'err'):
-        res = _get(f'ls/{args.id_or_name}')
+        res = _get(f"ls/{args.id_or_name or 'all'}")
         if res and not res.err:
             for p in res.payload:
-                #print(p)
-                if args.subparser == 'log':
-                    ftt = p['stdout']
-                else:
-                    ftt = p['stderr']
+                ftt = p['stdout'] if args.subparser == 'log' else p['stderr']
+                print()
+
+                if not Path(ftt).is_file():
+                    print(f"[yellow] !!! file {ftt} don't exist !!! [/yellow]")
+                    continue
+
+                print(f"[yellow2] #### {ftt} #### [/yellow2]")
 
                 try:
-                    asyncio.run(tailfile(ftt))
+                    if args.follow:
+                        asyncio.run(tailfile(ftt, lines=args.lines))
+                    else:
+                        with open(ftt, "r") as f1:
+                            last_line = f1.readlines()[-args.lines:]
+                            for r in last_line:
+                                print(r, end='')
                 except KeyboardInterrupt:
                     #print('CTRL+C')
                     pass
@@ -444,9 +457,12 @@ def main():
         if res and not res.err:
             out = [_clean_ls_proc(p) for p in res.payload if p['pm3_id'] != 0]
             if args.dump_file:
-                with open(Path(args.dump_file).as_posix(), 'w') as f:
+                dump_file = Path(args.dump_file).as_posix()
+                if not dump_file.endswith('.json'):
+                    print('Dump file must be a .json file')
+                    sys.exit(1)
+                with open(dump_file, 'w') as f:
                     json.dump(out, fp=f, indent=4)
-
             else:
                 print(json.dumps(out, indent=4))
 
