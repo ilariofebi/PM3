@@ -65,6 +65,31 @@ def _insert_process(proc: Process, rewrite=False):
         tbl.insert(proc.dict())
         return 'OK'
 
+def _start_process(proc) -> RetMsg:
+    if proc.is_running:
+        # Already running
+        msg = f'process {proc.pm3_name} (id={proc.pm3_id}) already running with pid {proc.pid}'
+        return RetMsg(msg=msg, err=True)
+    else:
+        try:
+            p = proc.run()
+            process_running_list[proc.pid] = p
+            if not ptbl.update(proc):
+                # Update Error
+                msg = f'Error updating {proc}'
+                return RetMsg(msg=msg, err=True)
+        except FileNotFoundError as e:
+            #print(e)
+            # File not found
+            msg = f'File Not Found: {Path(proc.cwd, proc.cmd).as_posix()} ({ion.type}={ion.data})'
+            return RetMsg(msg=msg, err=True)
+        else:
+            # OK, process started
+            msg = f'process {proc.pm3_name} (id={proc.pm3_id}) started with pid {proc.pid}'
+            return RetMsg(msg=msg, err=False)
+
+
+
 def ps_proc_as_dict(ps_proc):
     '''
     Versione corretta di psutil.Process().as_dict()
@@ -204,24 +229,7 @@ def start_process(id_or_name):
         resp_list.append(_resp(RetMsg(msg=msg, err=True)))
 
     for proc in ion.proc:
-        if proc.is_running:
-            msg = f'process {proc.pm3_name} (id={proc.pm3_id}) already running with pid {proc.pid}'
-            resp_list.append(_resp(RetMsg(msg=msg, err=True)))
-        else:
-            try:
-                p = proc.run()
-                process_running_list[proc.pid] = p
-                if not ptbl.update(proc):
-                    msg = f'Error updating {proc}'
-                    resp_list.append(_resp(RetMsg(msg=msg, err=True)))
-            except FileNotFoundError as e:
-                print(e)
-                msg = f'File Not Found: {Path(proc.cwd,proc.cmd).as_posix()} ({ion.type}={ion.data})'
-                resp_list.append(_resp(RetMsg(msg=msg, err=True)))
-            else:
-                msg = f'process {proc.pm3_name} (id={proc.pm3_id}) started with pid {proc.pid}'
-                resp_list.append(_resp(RetMsg(msg=msg, err=False)))
-
+        resp_list.append(_resp(_start_process(proc)))
     return _resp(RetMsg(msg='', payload=resp_list))
 
 
@@ -233,6 +241,14 @@ def main():
     url = config['main_section'].get('backend_url')
     dsn = dsnparse.parse(url)
     # TODO: Update del pid os.getpid() per il processo __backend__
+
+    # Autorun
+    for proc in [p for p in ptbl.find_id_or_name('all').proc if p.autorun is True]:
+        proc.is_running
+        ret_m = _resp(_start_process(proc))
+        if ret_m['err'] is True:
+            print(ret_m)
+
     app.run(debug=True, host=dsn.host, port=dsn.port)
 
 if __name__ == '__main__':

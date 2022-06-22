@@ -318,8 +318,8 @@ def main():
     parser_dump.add_argument('-f', '--file', dest='dump_file', help='dump into file', required=False)
 
     parser_load = subparsers.add_parser('load', help='load process from a file')
-    #parser_load.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name to import')
     parser_load.add_argument('-f', '--file', dest='load_file', help='load from this file', required=True)
+    parser_load.add_argument('-r', '--rewrite', dest='load_rewrite', action='store_true', help='rewrite if process already exist')
     parser_load.add_argument('-y', '--yes', dest='load_yes', action='store_true', help='response always yes')
 
     argcomplete.autocomplete(parser)
@@ -483,7 +483,8 @@ def main():
                 r = input(f'do you want load {p.pm3_name} ({p.pm3_id}) ?')
 
             if r == 'y':
-                res = _post('new', p.dict())
+                post_dest = 'new' if args.load_rewrite is False else 'new/rewrite'
+                res = _post(post_dest, p.dict())
                 _parse_retmsg(res)
             elif r == 'n':
                 print(f'[yellow]skip import {p.pm3_name} ({p.pm3_id})[/yellow]')
