@@ -27,7 +27,7 @@ def _get(path, config) -> RetMsg:
         return RetMsg(err=True, msg='Connection Error')
 
 def check_autostart(config):
-    res = _get("ls/autorun_enabled")
+    res = _get("ls/autorun_enabled", config)
     if res.err is False:
         payload = res.payload
         # Autorun
@@ -45,9 +45,10 @@ def check_autostart(config):
 
 def main():
     config = _read_config()
+    sleep_time = int(config['cron_checker'].get('sleep_time'))
     while True:
         check_autostart(config)
-        time.sleep(config['cron_checker'].get('sleep_time'))
+        time.sleep(sleep_time)
 
 if __name__ == '__main__':
     main()
