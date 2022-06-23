@@ -37,6 +37,7 @@ app = Flask(__name__)
 #crontab = Crontab(app)
 ret_msg = namedtuple('RetMsg', 'msg, err')
 
+#TODO: refactoring... e' un dizionario!
 process_running_list = {}
 
 def _resp(res: RetMsg) -> dict:
@@ -69,7 +70,7 @@ def _start_process(proc, ion) -> RetMsg:
     if proc.is_running:
         # Already running
         msg = f'process {proc.pm3_name} (id={proc.pm3_id}) already running with pid {proc.pid}'
-        return RetMsg(msg=msg, err=True)
+        return RetMsg(msg=msg, warn=True)
     elif proc.restart >= proc.max_restart:
         msg = f'ERROR, process {proc.pm3_name} (id={proc.pm3_id}) exceded max_restart {proc.restart}/{proc.max_restart}'
         return RetMsg(msg=msg, err=True)
@@ -178,9 +179,11 @@ def ls_process(id_or_name):
     payload = []
     ion = ptbl.find_id_or_name(id_or_name)
     for proc in ion.proc:
+
+        # NON CAPISCO A CHE SERVE, ELIMINARE
+        #if proc.pid in process_running_list:
+        #    process_running_list[proc.pid].poll()
         # Trick for update pid
-        if proc.pid in process_running_list:
-            process_running_list[proc.pid].poll()
         proc.is_running
         ptbl.update(proc)
         payload.append(proc)
@@ -235,15 +238,66 @@ def start_process(id_or_name):
         resp_list.append(_resp(_start_process(proc, ion)))
     return _resp(RetMsg(msg='', payload=resp_list))
 
+def _make_fake_backend(pid, cwd):
+    proc = Process(cmd=config['backend'].get('cmd'),
+                   interpreter=config['main_section'].get('main_interpreter'),
+                   pm3_name='__backend__',
+                   pm3_id=0,
+                   shell=False,
+                   nohup=True,
+                   stdout=f'{pm3_home_dir}/__backend__.log',
+                   stderr=f'{pm3_home_dir}/__backend__.err',
+                   pid=pid,
+                   cwd=cwd,
+                   max_restart=100000)
+    return proc
 
-#@crontab.job(minute="*")
-#def watchdog():
-#    print('cron')
+def _make_cron_checker():
+    proc = Process(cmd=config['cron_checker'].get('cmd'),
+                   interpreter=config['main_section'].get('main_interpreter'),
+                   pm3_name='__cron_checker__',
+                   pm3_id=-1,
+                   shell=False,
+                   nohup=True,
+                   stdout=f'{pm3_home_dir}/__cron_checker__.log',
+                   stderr=f'{pm3_home_dir}/__cron_checker__.err',
+                   max_restart=100000
+                   )
+    return proc
+
 
 def main():
-    url = config['main_section'].get('backend_url')
+    my_pid = os.getpid()
+    my_cwd = os.getcwd()
+    url = config['backend'].get('url')
     dsn = dsnparse.parse(url)
-    # TODO: Update del pid os.getpid() per il processo __backend__
+
+    # __backend__ process
+    ion_backend = ptbl.find_id_or_name('__backend__')
+    if len(ion_backend.proc) == 0:
+        # Se il processo non e' in lista lo credo in modo artificiale
+        proc_backend = _make_fake_backend(my_pid, my_cwd)
+        proc_backend.is_running
+        _insert_process(proc_backend)
+    else:
+        proc_backend = ion_backend.proc[0]
+        proc_backend.pid = my_pid
+        proc_backend.cwd = my_cwd
+        proc_backend.is_running
+        ptbl.update(proc_backend)
+    process_running_list[proc_backend.pid] = proc_backend
+
+    # __cron_checker__ process
+    ion_cron = ptbl.find_id_or_name('__cron_checker__')
+    if len(ion_cron.proc) == 0:
+        proc_cron = _make_cron_checker()
+        _insert_process(proc_cron)
+    else:
+        proc_cron = ion_cron.proc[0]
+
+    ret_m = _resp(_start_process(proc_cron, ion_cron))
+    if ret_m['err'] is True:
+        print(ret_m)
 
     # Autorun
     ion = ptbl.find_id_or_name('autorun_enabled')
@@ -253,6 +307,7 @@ def main():
         if ret_m['err'] is True:
             print(ret_m)
 
+    print(f'running on pid: {my_pid}')
     app.run(debug=True, host=dsn.host, port=dsn.port)
 
 if __name__ == '__main__':

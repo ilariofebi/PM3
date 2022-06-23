@@ -116,7 +116,7 @@ class ProcessList(BaseModel):
         if values['autorun'] is False:
             values['autorun'] = '[red]disabled[/red]'
         elif values['autorun'] and values['autorun_exclude']:
-            values['autorun'] = '[yellow]sospended[/yellow]'
+            values['autorun'] = '[yellow]suspended[/yellow]'
         elif values['autorun'] and not values['autorun_exclude']:
             values['autorun'] = '[green]enabled[/green]'
         return values

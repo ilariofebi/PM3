@@ -38,13 +38,20 @@ def _setup():
     if 'environ' in myself:
         if virtualenv_path := myself['environ'].get('VIRTUAL_ENV'):
             exe = Path(virtualenv_path, 'bin/python').as_posix()
-            cmd = Path(virtualenv_path, 'bin/pm3_backend').as_posix()
+            cmd_backend = Path(virtualenv_path, 'bin/pm3_backend').as_posix()
+            cmd_cron_checker = Path(virtualenv_path, 'bin/pm3_cron_checker').as_posix()
         else:
             exe = psutil.Process(os.getpid()).as_dict()['exe']
+
             if Path('/usr/bin/pm3_backend').is_file():
-                cmd = Path('/usr/bin/pm3_backend').as_posix()
+                cmd_backend = Path('/usr/bin/pm3_backend').as_posix()
             else:
-                cmd = '#pm3_backend not found'
+                cmd_backend = '#pm3_backend not found'
+
+            if Path('/usr/bin/pm3_cron_checker').is_file():
+                cmd_cron_checker = Path('/usr/bin/pm3_cron_checker').as_posix()
+            else:
+                cmd_cron_checker = '#pm3_cron_checker not found'
 
     if not Path(config_file).is_file():
         config = ConfigParser()
@@ -52,9 +59,19 @@ def _setup():
             'pm3_home_dir': pm3_home_dir,
             'pm3_db': f'{pm3_home_dir}/pm3_db.json',
             'pm3_db_process_table': 'pm3_procs',
-            'backend_url': 'http://127.0.0.1:5000/',
-            'backend_start_interpreter': exe,
-            'backend_start_command': cmd,
+            'main_interpreter': exe,
+            #'backend_url': 'http://127.0.0.1:5000/',
+            #'backend_start_interpreter': exe,
+            #'backend_start_command': cmd_backend,
+        }
+        config['backend'] = {
+            'url': 'http://127.0.0.1:5000/',
+            'cmd': cmd_backend,
+        }
+        config['cron_checker'] = {
+            'cmd': cmd_cron_checker,
+            'sleep_time': 5,
+            'debug': False
         }
         with open(config_file, 'w') as output_file:
             config.write(output_file)
@@ -98,8 +115,8 @@ echo 'systemctl start pm3'
 systemctl start pm3
 systemctl is-active pm3
 '''
-    backend_start_interpreter = config['main_section'].get('backend_start_interpreter')
-    backend_start_command = config['main_section'].get('backend_start_command')
+    backend_start_interpreter = config['main_section'].get('main_interpreter')
+    backend_start_command = config['backend'].get('cmd')
     exec_start = f'{backend_start_interpreter} {backend_start_command}' if backend_start_interpreter else backend_start_command
     with open('systemd.sh', 'w') as f:
         f.write(pm3_service.format(os.getlogin(), exec_start))
@@ -109,7 +126,7 @@ systemctl is-active pm3
 
 def _get(path) -> RetMsg:
     config = _read_config()
-    base_url = config['main_section'].get('backend_url')
+    base_url = config['backend'].get('url')
     r = requests.get(f'{base_url}/{path}')
     if r.status_code == 200:
         ret = r.json()
@@ -119,7 +136,7 @@ def _get(path) -> RetMsg:
 
 def _post(path, jdata):
     config = _read_config()
-    base_url = config['main_section'].get('backend_url')
+    base_url = config['backend'].get('url')
     r = requests.post(f'{base_url}/{path}', json=jdata)
     if r.status_code == 200:
         ret = r.json()
@@ -347,8 +364,8 @@ def main():
             if not res.err:
                 print(f"process running on pid {msg['pid']}")
             else:
-                backend = Process(cmd=config['main_section'].get('backend_start_command'),
-                                  interpreter=config['main_section'].get('backend_start_interpreter'),
+                backend = Process(cmd=config['backend'].get('cmd'),
+                                  interpreter=config['main_section'].get('main_interpreter'),
                                   pm3_name='__backend__',
                                   pm3_id=0,
                                   shell=False,
@@ -374,6 +391,7 @@ def main():
                 #print(res)
 
         if args.what == 'status':
+            #TODO: prendere il pid giusto da res
             print(_ps(0, 'list'))
 
         if args.what == 'systemd':

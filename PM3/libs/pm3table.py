@@ -4,6 +4,9 @@ from tinydb import where
 
 ION = namedtuple('Id_or_Name', 'type, data, proc')
 
+def hidden_proc(x: str) -> bool:
+    return x.startswith('__') and x.endswith('__')
+
 class Pm3Table:
     def __init__(self, tbl):
         self.tbl = tbl
@@ -43,13 +46,19 @@ class Pm3Table:
 
     def find_id_or_name(self, id_or_name, hidden=False) -> ION:
         if id_or_name == 'all':
-            if hidden:
-                out = ION('special', id_or_name, [Process(**i) for i in self.tbl.all()])
-            else:
-                out = ION('special',
-                          id_or_name,
-                          [Process(**i) for i in self.tbl.all() if i['pm3_name'] != '__backend__'])
+            # Tutti (nascosti esclusi)
+            #TODO: start con __ end con __
+            out = ION('special',
+                      id_or_name,
+                      [Process(**i) for i in self.tbl.all() if not hidden_proc(i['pm3_name'])]
+                      )
             return out
+
+        elif id_or_name == 'ALL':
+            # Proprio tutti (compresi i nascosti)
+            out = ION('special', id_or_name, [Process(**i) for i in self.tbl.all()])
+            return out
+
         elif id_or_name == 'autorun_only':
             # Tutti gli autorun (compresi i sospesi)
             out = ION('special',
