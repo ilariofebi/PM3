@@ -411,7 +411,7 @@ def main():
         p = Process(cmd=args.cmd,
                     cwd=args.cwd or Path.home().as_posix(),
                     pm3_name=args.pm3_name or '',
-                    pm3_id=args.pm3_id or -1,
+                    pm3_id=args.pm3_id or None,
                     interpreter=args.interpreter or '',
                     nohup=args.nohup,
                     shell=args.pm3_shell,
@@ -473,7 +473,7 @@ def main():
         res = _get(f"ls/{args.id_or_name or 'all'}")
 
         if res and not res.err:
-            out = [_clean_ls_proc(p) for p in res.payload if p['pm3_id'] != 0]
+            out = [_clean_ls_proc(p) for p in res.payload]
             if args.dump_file:
                 dump_file = Path(args.dump_file).as_posix()
                 if not dump_file.endswith('.json'):

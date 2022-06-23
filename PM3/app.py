@@ -48,7 +48,7 @@ def _resp(res: RetMsg) -> dict:
     return res.dict()
 
 def _insert_process(proc: Process, rewrite=False):
-    proc.pm3_id = proc.pm3_id if proc.pm3_id != -1 else ptbl.next_id()
+    proc.pm3_id = ptbl.next_id() if proc.pm3_id is None else proc.pm3_id
 
     if tbl.contains(where('pm3_name') == proc.pm3_name):
         if not rewrite:

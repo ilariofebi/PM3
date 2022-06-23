@@ -124,7 +124,7 @@ class ProcessList(BaseModel):
 
 class Process(BaseModel):
     # Struttura vera del processo
-    pm3_id: int
+    pm3_id: int = None  # None significa che deve essere assegnato da next_id()
     pm3_name: str
     cmd: str
     cwd: str = Path.home().as_posix()
