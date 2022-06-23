@@ -5,7 +5,7 @@ import time
 import requests
 import argparse, argcomplete
 import logging
-from PM3.model.process import Process, ProcessStatus, ProcessStatusLight
+from PM3.model.process import Process, ProcessStatus, ProcessStatusLight, ProcessList
 from PM3.model.pm3_protocol import RetMsg
 from rich import print
 from rich.table import Table
@@ -45,7 +45,6 @@ def _setup():
                 cmd = Path('/usr/bin/pm3_backend').as_posix()
             else:
                 cmd = '#pm3_backend not found'
-
 
     if not Path(config_file).is_file():
         config = ConfigParser()
@@ -212,7 +211,8 @@ def _tabulate_ls(data):
     table = Table(show_header=True, header_style="bold yellow")
 
     for n, r in enumerate(data):
-        r = Process(**r).dict()  # Validate and sort
+        #r = Process(**r).dict()  # Validate and sort
+        r = ProcessList(**r).dict()  # Validate and sort
         if n == 0:
             for h in r.keys():
                 table.add_column(h)

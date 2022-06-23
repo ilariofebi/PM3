@@ -21,6 +21,7 @@ class ProcessStatusLight(BaseModel):
     cmdline: Union[list, str]
     cpu_percent: float
     create_time: Union[float, str]
+    time_ago: str = ''
     cwd: Union[str, None]
     exe: str
     memory_percent: float
@@ -44,11 +45,19 @@ class ProcessStatusLight(BaseModel):
             v = ' '.join(v)
         return v
 
+    @root_validator(pre=True)
+    def time_ago_generator(cls, values):
+        create_time = pendulum.from_timestamp(values['create_time'])
+        time_ago = pendulum.now() - create_time
+        values['time_ago'] = time_ago.in_words()
+        return values
+
     @validator('create_time')
-    def create_time_formatter(cls, v):
+    def create_time_formatter(cls, v, values, **kwargs):
         if isinstance(v, float):
             v = pendulum.from_timestamp(v).astimezone().format('DD/MM/YYYY HH:mm:ss')
         return v
+
 
 class ProcessStatus(BaseModel):
     cmdline: list
@@ -83,8 +92,38 @@ class ProcessStatus(BaseModel):
     autorun: bool
     nohup: bool
 
+class ProcessList(BaseModel):
+    # Utilizzata per mostrare i dati in formato tabellare
+    pm3_id: int
+    pm3_name: str
+    cmd: str
+    cwd: str = Path.home().as_posix()
+    pid: int = -1
+    restart: Union[int, str] = ''
+    running: bool = False
+    autorun: Union[bool, str] = False
+
+    @root_validator(pre=True)
+    def _formatter(cls, values):
+        # Fromatting running
+        values['running'] = True if values['pid'] > 0 else False
+
+        # Formatting restart
+        n_restart = values['restart'] if values['restart'] > 0 else 0
+        values['restart'] = f"{n_restart}/{values['max_restart']}"
+
+        # Formatting autorun
+        if values['autorun'] is False:
+            values['autorun'] = '[red]disabled[/red]'
+        elif values['autorun'] and values['autorun_exclude']:
+            values['autorun'] = '[yellow]sospended[/yellow]'
+        elif values['autorun'] and not values['autorun_exclude']:
+            values['autorun'] = '[green]enabled[/green]'
+        return values
+
 
 class Process(BaseModel):
+    # Struttura vera del processo
     pm3_id: int
     pm3_name: str
     cmd: str
@@ -98,6 +137,8 @@ class Process(BaseModel):
     stdout: str = ''
     stderr: str = ''
     nohup: bool = False
+    max_restart: int = 1000
+    autorun_exclude = False
 
     @root_validator
     def _formatter(cls, values):
@@ -171,6 +212,7 @@ class Process(BaseModel):
             return KillMsg(msg='NO SUCH PROCESS', warn=True)
 
         gone, alive = self.kill_proc_tree(self.pid)
+        self.autorun_exclude = True
         if len(alive) > 0:
             return KillMsg(msg='OK', alive=alive, gone=gone, warn=True)
         else:
@@ -210,6 +252,7 @@ class Process(BaseModel):
                          bufsize=0)
         self.pid = p.pid
         self.restart += 1
+        self.autorun_exclude = False
         return p
 
     def reset(self):

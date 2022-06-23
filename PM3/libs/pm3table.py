@@ -2,6 +2,7 @@ from collections import namedtuple
 from PM3.model.process import Process
 from tinydb import where
 
+ION = namedtuple('Id_or_Name', 'type, data, proc')
 
 class Pm3Table:
     def __init__(self, tbl):
@@ -40,9 +41,7 @@ class Pm3Table:
         else:
             return False
 
-    def find_id_or_name(self, id_or_name, hidden=False):
-        ION = namedtuple('Id_or_Name', 'type, data, proc')
-
+    def find_id_or_name(self, id_or_name, hidden=False) -> ION:
         if id_or_name == 'all':
             if hidden:
                 out = ION('special', id_or_name, [Process(**i) for i in self.tbl.all()])
@@ -50,6 +49,18 @@ class Pm3Table:
                 out = ION('special',
                           id_or_name,
                           [Process(**i) for i in self.tbl.all() if i['pm3_name'] != '__backend__'])
+            return out
+        elif id_or_name == 'autorun_only':
+            # Tutti gli autorun (compresi i sospesi)
+            out = ION('special',
+                      id_or_name,
+                      [Process(**i) for i in self.tbl.all() if i['autorun'] is True])
+            return out
+        elif id_or_name == 'autorun_enabled':
+            # Gruppo di autorun non sospesi
+            out = ION('special',
+                      id_or_name,
+                      [Process(**i) for i in self.tbl.all() if i['autorun'] is True and i['autorun_exclude'] is False])
             return out
 
         try:

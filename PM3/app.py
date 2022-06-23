@@ -13,7 +13,7 @@ from configparser import ConfigParser
 import dsnparse
 import psutil
 from pathlib import Path
-from PM3.libs.pm3table import Pm3Table
+from PM3.libs.pm3table import Pm3Table, ION
 import signal
 import json
 
@@ -65,10 +65,13 @@ def _insert_process(proc: Process, rewrite=False):
         tbl.insert(proc.dict())
         return 'OK'
 
-def _start_process(proc) -> RetMsg:
+def _start_process(proc, ion) -> RetMsg:
     if proc.is_running:
         # Already running
         msg = f'process {proc.pm3_name} (id={proc.pm3_id}) already running with pid {proc.pid}'
+        return RetMsg(msg=msg, err=True)
+    elif proc.restart >= proc.max_restart:
+        msg = f'ERROR, process {proc.pm3_name} (id={proc.pm3_id}) exceded max_restart {proc.restart}/{proc.max_restart}'
         return RetMsg(msg=msg, err=True)
     else:
         try:
@@ -229,7 +232,7 @@ def start_process(id_or_name):
         resp_list.append(_resp(RetMsg(msg=msg, err=True)))
 
     for proc in ion.proc:
-        resp_list.append(_resp(_start_process(proc)))
+        resp_list.append(_resp(_start_process(proc, ion)))
     return _resp(RetMsg(msg='', payload=resp_list))
 
 
@@ -243,9 +246,10 @@ def main():
     # TODO: Update del pid os.getpid() per il processo __backend__
 
     # Autorun
-    for proc in [p for p in ptbl.find_id_or_name('all').proc if p.autorun is True]:
+    ion = ptbl.find_id_or_name('autorun_enabled')
+    for proc in ion.proc:
         proc.is_running
-        ret_m = _resp(_start_process(proc))
+        ret_m = _resp(_start_process(proc, ion))
         if ret_m['err'] is True:
             print(ret_m)
 
