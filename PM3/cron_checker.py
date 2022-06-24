@@ -7,18 +7,19 @@ from rich import print
 from pathlib import Path
 from configparser import ConfigParser
 
+#Read Config:
+pm3_home_dir = Path('~/.pm3').expanduser()
+config_file = f'{pm3_home_dir}/config.ini'
+if not Path(config_file).is_file():
+    raise Exception('Run pm3 first')
 
-def _read_config():
-    pm3_home_dir = Path('~/.pm3').expanduser()
-    config_file = f'{pm3_home_dir}/config.ini'
-    if not Path(config_file).is_file():
-        raise Exception('Run pm3 first')
-    config = ConfigParser()
-    config.read(config_file)
-    return config
+config = ConfigParser()
+config.read(config_file)
+base_url = config['backend'].get('url')
+sleep_time = int(config['cron_checker'].get('sleep_time'))
 
-def _get(path, config) -> RetMsg:
-    base_url = config['backend'].get('url')
+def _get(path) -> RetMsg:
+
     r = requests.get(f'{base_url}/{path}')
     if r.status_code == 200:
         ret = r.json()
@@ -26,8 +27,8 @@ def _get(path, config) -> RetMsg:
     else:
         return RetMsg(err=True, msg='Connection Error')
 
-def check_autostart(config):
-    res = _get("ls/autorun_enabled", config)
+def check_autostart():
+    res = _get("ls/autorun_enabled")
     if res.err is False:
         payload = res.payload
         # Autorun
@@ -44,10 +45,8 @@ def check_autostart(config):
                 print(p)
 
 def main():
-    config = _read_config()
-    sleep_time = int(config['cron_checker'].get('sleep_time'))
     while True:
-        check_autostart(config)
+        check_autostart()
         time.sleep(sleep_time)
 
 if __name__ == '__main__':

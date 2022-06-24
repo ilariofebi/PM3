@@ -236,7 +236,8 @@ class Process(BaseModel):
             if 'nohup' not in cmd[0]:
                 cmd.insert(0, '/usr/bin/nohup')
             # print('detach', cmd)
-            p = sp.Popen(cmd,
+            #p = sp.Popen(cmd,
+            p = psutil.Popen(cmd,
                          cwd=self.cwd,
                          shell=self.shell,
                          stdout=fout,
@@ -244,7 +245,8 @@ class Process(BaseModel):
                          bufsize=0,
                          preexec_fn=os.setpgrp)
         else:
-            p = sp.Popen(cmd,
+            #p = sp.Popen(cmd,
+            p=psutil.Popen(cmd,
                          cwd=self.cwd,
                          shell=self.shell,
                          stdout=fout,

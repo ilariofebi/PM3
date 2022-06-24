@@ -72,6 +72,7 @@ def _start_process(proc, ion) -> RetMsg:
         msg = f'process {proc.pm3_name} (id={proc.pm3_id}) already running with pid {proc.pid}'
         return RetMsg(msg=msg, warn=True)
     elif proc.restart >= proc.max_restart:
+        # Max request exceded
         msg = f'ERROR, process {proc.pm3_name} (id={proc.pm3_id}) exceded max_restart {proc.restart}/{proc.max_restart}'
         return RetMsg(msg=msg, err=True)
     else:
@@ -249,6 +250,7 @@ def _make_fake_backend(pid, cwd):
                    stderr=f'{pm3_home_dir}/__backend__.err',
                    pid=pid,
                    cwd=cwd,
+                   restart=1,
                    max_restart=100000)
     return proc
 
@@ -271,7 +273,7 @@ def main():
     my_cwd = os.getcwd()
     url = config['backend'].get('url')
     dsn = dsnparse.parse(url)
-
+    """
     # __backend__ process
     ion_backend = ptbl.find_id_or_name('__backend__')
     if len(ion_backend.proc) == 0:
@@ -306,8 +308,9 @@ def main():
         ret_m = _resp(_start_process(proc, ion))
         if ret_m['err'] is True:
             print(ret_m)
+    """
 
-    print(f'running on pid: {my_pid}')
+    #print(f'running on pid: {my_pid}')
     app.run(debug=True, host=dsn.host, port=dsn.port)
 
 if __name__ == '__main__':
