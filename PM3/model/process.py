@@ -8,7 +8,9 @@ from pathlib import Path
 import pendulum
 import signal
 from PM3.model.pm3_protocol import KillMsg
+from collections import namedtuple
 
+alive_gone = namedtuple('AliveGone', 'pid')
 
 def on_terminate(proc):
     print(proc.status())
@@ -199,8 +201,13 @@ class Process(BaseModel):
                 p.send_signal(sig)
             except psutil.NoSuchProcess:
                 pass
-        gone, alive = psutil.wait_procs(children, timeout=timeout,
-                                        callback=on_terminate)
+        try:
+            gone, alive = psutil.wait_procs(children, timeout=timeout,
+                                            callback=on_terminate)
+        except psutil.NoSuchProcess:
+            gone = [alive_gone(pid=pid),]
+            alive = []
+
         return (gone, alive)
 
     def kill(self):
