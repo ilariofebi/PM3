@@ -6,3 +6,10 @@ class RetMsg(BaseModel):
     err: bool = False
     warn: bool = False
     payload: Union[list, dict, None]
+
+class KillMsg(BaseModel):
+    msg: str = ''
+    err: bool = False
+    warn: bool = False
+    gone: list = []
+    alive: list = []

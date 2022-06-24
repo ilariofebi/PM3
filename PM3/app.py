@@ -6,7 +6,7 @@ import time
 from flask import Flask, request
 from tinydb import TinyDB, where
 from PM3.model.process import Process
-from PM3.model.pm3_protocol import RetMsg
+from PM3.model.pm3_protocol import RetMsg, KillMsg
 import logging
 from collections import namedtuple
 from configparser import ConfigParser
@@ -16,6 +16,7 @@ from pathlib import Path
 from PM3.libs.pm3table import Pm3Table, ION
 import signal
 import json
+import threading
 
 pm3_home_dir = os.path.expanduser('~/.pm3')
 config_file = f'{pm3_home_dir}/config.ini'
@@ -31,14 +32,14 @@ db = TinyDB(config['main_section'].get('pm3_db'))
 tbl = db.table(config['main_section'].get('pm3_db_process_table'))
 ptbl = Pm3Table(tbl)
 
-#from flask_crontab import Crontab
-
 app = Flask(__name__)
-#crontab = Crontab(app)
 ret_msg = namedtuple('RetMsg', 'msg, err')
+alive_gone = namedtuple('AliveGone', 'pid')
 
-#TODO: refactoring... e' un dizionario!
-process_running_list = {}
+# Processi avviati localmente con popen:
+# key = pid
+# value = processo Popen
+local_popen_process = {}
 
 def _resp(res: RetMsg) -> dict:
     if res.err:
@@ -78,7 +79,7 @@ def _start_process(proc, ion) -> RetMsg:
     else:
         try:
             p = proc.run()
-            process_running_list[proc.pid] = p
+            local_popen_process[proc.pid] = p
             if not ptbl.update(proc):
                 # Update Error
                 msg = f'Error updating {proc}'
@@ -135,6 +136,31 @@ def new_process():
         return _resp(RetMsg(msg=msg, err=True))
 
 
+def _local_kill(proc):
+    p = local_popen_process[proc.pid]
+    local_pid = p.pid
+    p.kill()
+    for i in range(5):
+        _ = p.poll()
+        if not proc.is_running:
+            break
+        time.sleep(1)
+    else:
+        return KillMsg(msg='OK', alive=[alive_gone(pid=local_pid),], warn=True)
+    return KillMsg(msg='OK', gone=[alive_gone(pid=local_pid),])
+
+def _interal_poll():
+    for local_pid, p in local_popen_process.items():
+        p.poll()
+
+def _interal_poll_thread():
+    # Interrogazione ciclica dei processi avviati da PM3
+    # i processi contenuti in local_popen_process
+    # vanno periodicamente interrogati
+    while True:
+        _interal_poll()
+        time.sleep(1)
+
 @app.get("/stop/<id_or_name>")
 @app.get("/restart/<id_or_name>")
 @app.get("/rm/<id_or_name>")
@@ -146,18 +172,25 @@ def stop_and_rm_process(id_or_name):
         resp_list.append(_resp(RetMsg(msg=msg, err=True)))
 
     for proc in ion.proc:
-        ret = proc.kill()
+        if proc.pid in local_popen_process:
+            # Processi attivati da os.getpid() vanno trattati con popen
+            ret = _local_kill(proc)
+        else:
+            ret = proc.kill()
+
         if ret.msg == 'OK':
+            proc.autorun_exclude = True
             ptbl.update(proc)
             for pk in ret.gone:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) with pid {pk.pid} was killed'
                 resp_list.append(_resp(RetMsg(msg=msg, err=False)))
+        elif ret.warn:
             for pk in ret.alive:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) with pid {pk.pid} still alive'
                 resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
-        elif ret.warn:
-            msg = f'process {proc.pm3_name} (id={proc.pm3_id}) not running'
-            resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
+            if ret.alive == 0:
+                msg = f'process {proc.pm3_name} (id={proc.pm3_id}) not running'
+                resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
         else:
             msg = f'Strange Error'
             resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
@@ -180,10 +213,8 @@ def ls_process(id_or_name):
     payload = []
     ion = ptbl.find_id_or_name(id_or_name)
     for proc in ion.proc:
-
-        # NON CAPISCO A CHE SERVE, ELIMINARE
-        #if proc.pid in process_running_list:
-        #    process_running_list[proc.pid].poll()
+        # Aggiorno lo stato dei processi
+        _interal_poll()
         # Trick for update pid
         proc.is_running
         ptbl.update(proc)
@@ -273,7 +304,7 @@ def main():
     my_cwd = os.getcwd()
     url = config['backend'].get('url')
     dsn = dsnparse.parse(url)
-    """
+
     # __backend__ process
     ion_backend = ptbl.find_id_or_name('__backend__')
     if len(ion_backend.proc) == 0:
@@ -287,7 +318,7 @@ def main():
         proc_backend.cwd = my_cwd
         proc_backend.is_running
         ptbl.update(proc_backend)
-    process_running_list[proc_backend.pid] = proc_backend
+
 
     # __cron_checker__ process
     ion_cron = ptbl.find_id_or_name('__cron_checker__')
@@ -308,9 +339,12 @@ def main():
         ret_m = _resp(_start_process(proc, ion))
         if ret_m['err'] is True:
             print(ret_m)
-    """
 
-    #print(f'running on pid: {my_pid}')
+    # Threads
+    t1 = threading.Thread(target=_interal_poll_thread)
+    t1.start()
+
+    print(f'running on pid: {my_pid}')
     app.run(debug=True, host=dsn.host, port=dsn.port)
 
 if __name__ == '__main__':

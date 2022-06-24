@@ -7,13 +7,13 @@ import os
 from pathlib import Path
 import pendulum
 import signal
+from PM3.model.pm3_protocol import KillMsg
 
-class KillMsg(BaseModel):
-    msg: str = ''
-    err: bool = False
-    warn: bool = False
-    gone: list = []
-    alive: list = []
+
+def on_terminate(proc):
+    print(proc.status())
+    print("process {} terminated with exit code {}".format(proc.pid, proc.returncode))
+
 
 class ProcessStatusLight(BaseModel):
     pm3_id: int
@@ -182,7 +182,7 @@ class Process(BaseModel):
 
     @staticmethod
     def kill_proc_tree(pid, sig=signal.SIGTERM, include_parent=True,
-                       timeout=None, on_terminate=None):
+                       timeout=5, on_terminate=on_terminate):
         """Kill a process tree (including grandchildren) with signal
         "sig" and return a (gone, still_alive) tuple.
         "on_terminate", if specified, is a callback function which is
@@ -212,7 +212,6 @@ class Process(BaseModel):
             return KillMsg(msg='NO SUCH PROCESS', warn=True)
 
         gone, alive = self.kill_proc_tree(self.pid)
-        self.autorun_exclude = True
         if len(alive) > 0:
             return KillMsg(msg='OK', alive=alive, gone=gone, warn=True)
         else:
@@ -236,8 +235,7 @@ class Process(BaseModel):
             if 'nohup' not in cmd[0]:
                 cmd.insert(0, '/usr/bin/nohup')
             # print('detach', cmd)
-            #p = sp.Popen(cmd,
-            p = psutil.Popen(cmd,
+            p = sp.Popen(cmd,
                          cwd=self.cwd,
                          shell=self.shell,
                          stdout=fout,
@@ -245,8 +243,7 @@ class Process(BaseModel):
                          bufsize=0,
                          preexec_fn=os.setpgrp)
         else:
-            #p = sp.Popen(cmd,
-            p=psutil.Popen(cmd,
+            p = sp.Popen(cmd,
                          cwd=self.cwd,
                          shell=self.shell,
                          stdout=fout,
