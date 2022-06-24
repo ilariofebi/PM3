@@ -7,7 +7,7 @@ import argparse, argcomplete
 import logging
 from PM3.model.process import Process, ProcessStatus, ProcessStatusLight, ProcessList
 from PM3.model.pm3_protocol import RetMsg
-from libs.system_scripts import pm3_scripts
+from PM3.libs.system_scripts import pm3_scripts
 from rich import print
 from rich.table import Table
 from rich.console import Console

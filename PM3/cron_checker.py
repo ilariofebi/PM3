@@ -19,8 +19,11 @@ base_url = config['backend'].get('url')
 sleep_time = int(config['cron_checker'].get('sleep_time'))
 
 def _get(path) -> RetMsg:
+    try:
+        r = requests.get(f'{base_url}/{path}')
+    except requests.exceptions.ConnectionError as e:
+        return RetMsg(err=True, msg=str(e))
 
-    r = requests.get(f'{base_url}/{path}')
     if r.status_code == 200:
         ret = r.json()
         return RetMsg(**ret)
@@ -37,12 +40,16 @@ def check_autostart():
             if p.pid == -1:
                 res_start = _get(f"start/{p.pm3_id}")
                 if res_start.err is False:
+                    # Restart OK
                     print(res_start.payload[0]['msg'])
                 else:
+                    # Restart ERROR
                     print(res_start)
             elif config['cron_checker'].get('debug'):
                 print('process running:')
                 print(p)
+    else:
+        print(res)
 
 def main():
     while True:
