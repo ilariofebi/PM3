@@ -1,8 +1,6 @@
-from collections import namedtuple
+from PM3.model.pm3_protocol import ION
 from PM3.model.process import Process
 from tinydb import where
-
-ION = namedtuple('Id_or_Name', 'type, data, proc')
 
 def hidden_proc(x: str) -> bool:
     return x.startswith('__') and x.endswith('__')
@@ -47,7 +45,6 @@ class Pm3Table:
     def find_id_or_name(self, id_or_name, hidden=False) -> ION:
         if id_or_name == 'all':
             # Tutti (nascosti esclusi)
-            #TODO: start con __ end con __
             out = ION('special',
                       id_or_name,
                       [Process(**i) for i in self.tbl.all() if not hidden_proc(i['pm3_name'])]
@@ -57,6 +54,14 @@ class Pm3Table:
         elif id_or_name == 'ALL':
             # Proprio tutti (compresi i nascosti)
             out = ION('special', id_or_name, [Process(**i) for i in self.tbl.all()])
+            return out
+
+        elif id_or_name == 'hidden_only':
+            # Solo i nascosti (nascosti esclusi)
+            out = ION('special',
+                      id_or_name,
+                      [Process(**i) for i in self.tbl.all() if hidden_proc(i['pm3_name'])]
+                      )
             return out
 
         elif id_or_name == 'autorun_only':

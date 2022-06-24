@@ -1,5 +1,12 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel
 from typing import Union
+from collections import namedtuple
+
+# id or Name schema
+ION = namedtuple('Id_or_Name', 'type, data, proc')
+
+# Messaggio di ritorno simulato di psutil.wait
+alive_gone = namedtuple('AliveGone', 'pid')
 
 class RetMsg(BaseModel):
     msg: str

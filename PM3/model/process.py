@@ -2,19 +2,18 @@ from pydantic import BaseModel, validator, root_validator
 from typing import Union
 import subprocess as sp
 import psutil
-import time
 import os
 from pathlib import Path
 import pendulum
 import signal
-from PM3.model.pm3_protocol import KillMsg
-from collections import namedtuple
+from PM3.model.pm3_protocol import KillMsg, alive_gone
 
-alive_gone = namedtuple('AliveGone', 'pid')
+# TODO: Trovare nomi milgiori
 
 def on_terminate(proc):
-    print(proc.status())
-    print("process {} terminated with exit code {}".format(proc.pid, proc.returncode))
+    pass
+    #print(proc.status())
+    #print("process {} terminated with exit code {}".format(proc.pid, proc.returncode))
 
 
 class ProcessStatusLight(BaseModel):

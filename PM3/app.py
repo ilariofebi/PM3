@@ -6,7 +6,7 @@ import time
 from flask import Flask, request
 from tinydb import TinyDB, where
 from PM3.model.process import Process
-from PM3.model.pm3_protocol import RetMsg, KillMsg
+from PM3.model.pm3_protocol import RetMsg, KillMsg, alive_gone
 import logging
 from collections import namedtuple
 from configparser import ConfigParser
@@ -32,9 +32,11 @@ db = TinyDB(config['main_section'].get('pm3_db'))
 tbl = db.table(config['main_section'].get('pm3_db_process_table'))
 ptbl = Pm3Table(tbl)
 
+backend_process_name = config['backend'].get('name') or '__backend__'
+cron_checker_process_name = config['cron_checker'].get('name') or '__cron_checker__'
+
 app = Flask(__name__)
-ret_msg = namedtuple('RetMsg', 'msg, err')
-alive_gone = namedtuple('AliveGone', 'pid')
+
 
 # Processi avviati localmente con popen:
 # key = pid
@@ -147,6 +149,8 @@ def _local_kill(proc):
         time.sleep(1)
     else:
         return KillMsg(msg='OK', alive=[alive_gone(pid=local_pid),], warn=True)
+    # Elimino l'elemento dal dizionario
+    _ = local_popen_process.pop(proc.pid)
     return KillMsg(msg='OK', gone=[alive_gone(pid=local_pid),])
 
 def _interal_poll():
@@ -273,12 +277,12 @@ def start_process(id_or_name):
 def _make_fake_backend(pid, cwd):
     proc = Process(cmd=config['backend'].get('cmd'),
                    interpreter=config['main_section'].get('main_interpreter'),
-                   pm3_name='__backend__',
+                   pm3_name=backend_process_name,
                    pm3_id=0,
                    shell=False,
                    nohup=True,
-                   stdout=f'{pm3_home_dir}/__backend__.log',
-                   stderr=f'{pm3_home_dir}/__backend__.err',
+                   stdout=f'{pm3_home_dir}/{backend_process_name}.log',
+                   stderr=f'{pm3_home_dir}/{backend_process_name}.err',
                    pid=pid,
                    cwd=cwd,
                    restart=1,
@@ -288,12 +292,12 @@ def _make_fake_backend(pid, cwd):
 def _make_cron_checker():
     proc = Process(cmd=config['cron_checker'].get('cmd'),
                    interpreter=config['main_section'].get('main_interpreter'),
-                   pm3_name='__cron_checker__',
+                   pm3_name=cron_checker_process_name,
                    pm3_id=-1,
                    shell=False,
                    nohup=True,
-                   stdout=f'{pm3_home_dir}/__cron_checker__.log',
-                   stderr=f'{pm3_home_dir}/__cron_checker__.err',
+                   stdout=f'{pm3_home_dir}/{cron_checker_process_name}.log',
+                   stderr=f'{pm3_home_dir}/{cron_checker_process_name}.err',
                    max_restart=100000
                    )
     return proc
@@ -306,7 +310,7 @@ def main():
     dsn = dsnparse.parse(url)
 
     # __backend__ process
-    ion_backend = ptbl.find_id_or_name('__backend__')
+    ion_backend = ptbl.find_id_or_name(backend_process_name)
     if len(ion_backend.proc) == 0:
         # Se il processo non e' in lista lo credo in modo artificiale
         proc_backend = _make_fake_backend(my_pid, my_cwd)
@@ -321,7 +325,7 @@ def main():
 
 
     # __cron_checker__ process
-    ion_cron = ptbl.find_id_or_name('__cron_checker__')
+    ion_cron = ptbl.find_id_or_name(cron_checker_process_name)
     if len(ion_cron.proc) == 0:
         proc_cron = _make_cron_checker()
         _insert_process(proc_cron)

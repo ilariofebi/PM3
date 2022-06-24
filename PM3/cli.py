@@ -7,6 +7,7 @@ import argparse, argcomplete
 import logging
 from PM3.model.process import Process, ProcessStatus, ProcessStatusLight, ProcessList
 from PM3.model.pm3_protocol import RetMsg
+from libs.system_scripts import pm3_scripts
 from rich import print
 from rich.table import Table
 from rich.console import Console
@@ -60,15 +61,14 @@ def _setup():
             'pm3_db': f'{pm3_home_dir}/pm3_db.json',
             'pm3_db_process_table': 'pm3_procs',
             'main_interpreter': exe,
-            #'backend_url': 'http://127.0.0.1:5000/',
-            #'backend_start_interpreter': exe,
-            #'backend_start_command': cmd_backend,
         }
         config['backend'] = {
-            'url': 'http://127.0.0.1:5000/',
+            'name': '__backend__',
             'cmd': cmd_backend,
+            'url': 'http://127.0.0.1:7979/',
         }
         config['cron_checker'] = {
+            'name': '__cron_checker__',
             'cmd': cmd_cron_checker,
             'sleep_time': 5,
             'debug': False
@@ -87,39 +87,12 @@ def _read_config():
 
 def _make_systemd_init_script():
     config = _read_config()
-    pm3_service = '''#!/bin/bash
 
-cat << EOF > /etc/systemd/system/pm3.service
-[Unit]
-Description=PM3 Backend
-After=network.target
-
-[Service]
-User={}
-Type=simple
-ExecStart={}
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-echo 'file /etc/systemd/system/pm3.service written'
-
-echo 'systemctl daemon-reload'
-systemctl daemon-reload
-
-echo 'systemctl enable pm3'
-systemctl enable pm3
-
-echo 'systemctl start pm3'
-systemctl start pm3
-systemctl is-active pm3
-'''
     backend_start_interpreter = config['main_section'].get('main_interpreter')
     backend_start_command = config['backend'].get('cmd')
     exec_start = f'{backend_start_interpreter} {backend_start_command}' if backend_start_interpreter else backend_start_command
     with open('systemd.sh', 'w') as f:
-        f.write(pm3_service.format(os.getlogin(), exec_start))
+        f.write(pm3_scripts['systemd'].format(os.getlogin(), exec_start))
         print('file systemd.sh generated')
     print('now execute:\n sudo bash systemd.sh')
 
@@ -127,7 +100,11 @@ systemctl is-active pm3
 def _get(path) -> RetMsg:
     config = _read_config()
     base_url = config['backend'].get('url')
-    r = requests.get(f'{base_url}/{path}')
+    try:
+        r = requests.get(f'{base_url}/{path}')
+    except requests.exceptions.ConnectionError as e:
+        return RetMsg(err=True, msg=str(e))
+
     if r.status_code == 200:
         ret = r.json()
         return RetMsg(**ret)
@@ -137,19 +114,22 @@ def _get(path) -> RetMsg:
 def _post(path, jdata):
     config = _read_config()
     base_url = config['backend'].get('url')
-    r = requests.post(f'{base_url}/{path}', json=jdata)
+    try:
+        r = requests.post(f'{base_url}/{path}', json=jdata)
+    except requests.exceptions.ConnectionError:
+        return RetMsg(err=True, msg='Connection Error')
+
     if r.status_code == 200:
         ret = r.json()
         return RetMsg(**ret)
     else:
         return RetMsg(err=True, msg='Connection Error')
 
-#def _parse_retmsg_payload(res: RetMsg):
 def _parse_retmsg(res: RetMsg):
     if res.err:
         print(f"[red]{res.msg}[/red]")
 
-    if res.payload:
+    elif res.payload:
         for pi in res.payload:
             pi = RetMsg(**pi)
             if pi.err:
@@ -168,6 +148,10 @@ def _parse_retmsg(res: RetMsg):
 
 def _ls(id_or_name='all', format='table'):
     res = _get(f'ls/{id_or_name}')
+    if res.err:
+        _parse_retmsg(res)
+        return ''
+
     if res:
         payload_sorted = sorted(res.payload, key=lambda item: item.get("pm3_id"))
         if format == 'table':
@@ -179,6 +163,10 @@ def _ls(id_or_name='all', format='table'):
 
 def _ps(id_or_name='all', format='table'):
     res = _get(f'ps/{id_or_name}')
+    if res.err:
+        _parse_retmsg(res)
+        return ''
+
     if not res.err:
         if res.payload:
             payload_sorted = sorted(res.payload, key=lambda item: item.get("pm3_id"))
@@ -259,17 +247,12 @@ def _show_status(res, light=True):
             else:
                 print(f'  {k}={v}')
 
-def _ping():
-    try:
-        res = _get('ping')
-    except requests.exceptions.ConnectionError as e:
-        res = RetMsg(err=True, msg=str(e))
-    return res
-
 
 def main():
     config = _read_config()
     pm3_home_dir = config['main_section'].get('pm3_home_dir')
+    backend_process_name = config['backend'].get('name') or '__backend__'
+    cron_checker_process_name = config['cron_checker'].get('name') or '__cron_checker__'
 
     parser = argparse.ArgumentParser(prog='pm3', description='Like pm2 without node.js')
     subparsers = parser.add_subparsers(dest='subparser')
@@ -345,7 +328,7 @@ def main():
     logging.debug(kwargs)
 
     if args.subparser == 'ping':
-        res = _ping()
+        res = _get('ping')
         if res.err:
             print('[red]ERROR[/red]')
             if args.verbose:
@@ -356,7 +339,7 @@ def main():
                 print(res.payload)
 
     elif args.subparser == 'daemon':
-        res = _ping()
+        res = _get('ping')
         if not res.err:
             msg = res.payload
 
@@ -366,20 +349,22 @@ def main():
             else:
                 backend = Process(cmd=config['backend'].get('cmd'),
                                   interpreter=config['main_section'].get('main_interpreter'),
-                                  pm3_name='__backend__',
+                                  pm3_name=backend_process_name,
                                   pm3_id=0,
                                   shell=False,
                                   nohup=True,
-                                  stdout=f'{pm3_home_dir}/__backend__.log',
-                                  stderr=f'{pm3_home_dir}/__backend__.err')
+                                  stdout=f'{pm3_home_dir}/{backend_process_name}.log',
+                                  stderr=f'{pm3_home_dir}/{backend_process_name}.err')
                 p = backend.run()
                 time.sleep(2)
-                # TODO: Verificare se il processo è running
-                res = _post('new/rewrite', backend.dict())
-                if res.err:
-                    print(res)
+                if psutil.Process(p.pid).is_running():
+                    res = _post('new/rewrite', backend.dict())
+                    if res.err:
+                        print(res)
+                    else:
+                        print('[green]process started[/green]')
                 else:
-                    print('[green]process started[/green]')
+                    print('[red]process NOT started[/red]')
 
 
         if args.what == 'stop':
@@ -391,8 +376,8 @@ def main():
                 #print(res)
 
         if args.what == 'status':
-            #TODO: prendere il pid giusto da res
-            print(_ps(0, 'list'))
+            # Presumo che i processi nascosti siano interessanti per lo status
+            print(_ps('hidden_only', 'table'))
 
         if args.what == 'systemd':
             _make_systemd_init_script()
@@ -422,7 +407,9 @@ def main():
         if res.err:
             print(res)
         else:
+            print(_ls('all', 'table'))
             print(f"[green]{res.msg}[/green]")
+            print('')
 
     elif args.subparser == 'rm':
         res = _get(f'rm/{args.id_or_name}')
