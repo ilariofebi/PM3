@@ -87,8 +87,6 @@ def _read_config():
 
 def _make_script(filename, script, format_values=None, how_to_install=None, how_to_use=None, show_only=False):
     if format_values:
-        print('qui')
-        print(format_values)
         script_text = pm3_scripts[script].format(**format_values)
     else:
         script_text = pm3_scripts[script]
