@@ -13,14 +13,7 @@ Like pm2 without node.js ;-)
 `pm3 -h`
 
 # Bash Tools
-```commandline
-#!/bin/bash
-
-TMPFILE=$(mktemp --suffix=.json)
-pm3 dump ${1} -f $TMPFILE
-vi $TMPFILE
-pm3 load -f $TMPFILE -r
-```
+`pm3 make_script --help`
 
 ## Autocompletition
 ### Bash

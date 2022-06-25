@@ -33,6 +33,7 @@ _pm3_edit = '''#!/bin/bash
 
 if (( $# != 1 )); then
     >&2 echo "Use: pm3_edit.sh <id or process name>"
+    exit 1
 fi
 
 EDITOR=$(which nano || which pico || which vim || which vi || wichi emacs)
