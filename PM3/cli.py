@@ -408,7 +408,7 @@ def main():
             filename = 'systemd.sh'
             how_to_install = 'sudo bash systemd.sh'
             _make_script(filename,
-                         'pm3_edit',
+                         'systemd',
                          format_values=format_values,
                          how_to_install=how_to_install,
                          show_only=args.show_only)

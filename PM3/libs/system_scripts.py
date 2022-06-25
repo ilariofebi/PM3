@@ -47,3 +47,13 @@ pm3 load -f $TMPFILE -r
 
 pm3_scripts = dict(systemd=_systemd_service,
                    pm3_edit=_pm3_edit)
+
+# TODO: perfezionare il nuovo formato
+pm3_scripts_new = dict(systemd={'script': _systemd_service,
+                                'description': '',
+                                'how_to_install': 'sudo bash {filename}'},
+                       pm3_edit={'script': _pm3_edit,
+                                 'description': '',
+                                 'how_to_install': 'chmod 755 {filename}',
+                                 'how_to_use': './{filename} <id_or_name>'},
+                       )
