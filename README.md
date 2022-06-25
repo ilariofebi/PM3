@@ -14,11 +14,11 @@ pm3 daemon start    # Start process with default ~/.pm3/config.ini configuration
 pm3 ping            # Ensure pm3 daemon has been launched
 ```
 
-
 ### Create new process
 ```
-pm3 new '/bin/sleep 10' -n sleep10                  # Create a new process with name sleep10
-pm3 new '/bin/sleep 10' -n sleep10 --autorun        # Create a new process with autorun option
+pm3 new '/bin/sleep 10' -n sleep10                                  # Create a new process with name sleep10
+pm3 new '/bin/sleep 10' -n sleep10 --autorun                        # Create a new process with autorun option
+pm3 new "script.py" --interpreter "/venv/bin/python" --cwd "/tmp"   # Create a new process with interpreter and cwd definition
 ```
 ### Actions
 ```
@@ -57,13 +57,41 @@ pm3 make_script systemd     # Generate script for install startup systemd config
 pm3 make_script pm3_edit    # Generate script for edit process configuration on the fly 
 ```
 
-
 ### Misc
 ```
-pm3 reset <process>     # Reset meta data (restarted time...)
-pm3 ping                # Ensure pm3 daemon has been launched
-pm3 -h                  # General help
-pm3 new -h              # Help of new subcommand  
+pm3 reset 2                 # Reset meta data of process id 2
+pm3 ping [-v]               # Ensure pm3 daemon has been launched [verbose]
+pm3 rename 3 -n <new_name>  # Rename process id 3 with a <new_name>
+pm3 -h                      # General help
+pm3 new -h                  # Help of new subcommand  
+```
+
+### Daemon commands
+```
+pm3 daemon start        # Start PM3 backend porcess
+pm3 daemon stop         # Stop PM3 backend porcess
+pm3 daemon status       # Check daemon status details
+```
+
+# Configuration file:
+`$ cat ~/.pm3/config.ini`
+```
+[main_section]
+pm3_home_dir = /home/user/.pm3                  # pm3 home dir
+pm3_db = /home/user/.pm3/pm3_db.json            # TinyDB Store File
+pm3_db_process_table = pm3_procs                # TinyDB process table
+main_interpreter = /home/user/venv/bin/python   # path of python interpreter
+
+[backend]
+name = __backend__                       # name of backend process (hidden process)
+url = http://127.0.0.1:7979/             # proto://ip:port of backend (if != 127.1 is a potential RISK!!)
+cmd = /home/user/venv/bin/pm3_backend    # path of backend command
+
+[cron_checker]
+name = __cron_checker__                      # name of backend process (hidden process)
+cmd = /home/user/venv/bin/pm3_cron_checker   # path of cron checker command
+sleep_time = 5                               # Time (in seconds) to check process                            
+debug = False                                # Crocn Checker debug info
 ```
 
 
