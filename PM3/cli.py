@@ -85,17 +85,30 @@ def _read_config():
     config.read(config_file)
     return config
 
-def _make_systemd_init_script():
-    config = _read_config()
+def _make_script(filename, script, format_values=None, how_to_install=None, how_to_use=None, show_only=False):
+    if format_values:
+        print('qui')
+        print(format_values)
+        script_text = pm3_scripts[script].format(**format_values)
+    else:
+        script_text = pm3_scripts[script]
 
-    backend_start_interpreter = config['main_section'].get('main_interpreter')
-    backend_start_command = config['backend'].get('cmd')
-    exec_start = f'{backend_start_interpreter} {backend_start_command}' if backend_start_interpreter else backend_start_command
-    with open('systemd.sh', 'w') as f:
-        f.write(pm3_scripts['systemd'].format(os.getlogin(), exec_start))
-        print('file systemd.sh generated')
-    print('now execute:\n sudo bash systemd.sh')
+    if show_only:
+        print(f'[green]### {filename} ###[/green]')
+        print('#'*80)
+        print(script_text)
+        print('#'*80)
+    else:
+        with open(filename, 'w') as f:
+            f.write(script_text)
+            print(f'file {filename} generated')
 
+    if how_to_install:
+        print('\n[yellow]HOW TO INSTALL:[/yellow]')
+        print(how_to_install)
+    if how_to_use:
+        print('\n[yellow]HOW TO USE:[/yellow]')
+        print(how_to_use)
 
 def _get(path) -> RetMsg:
     config = _read_config()
@@ -259,7 +272,11 @@ def main():
 
     parser_daemon = subparsers.add_parser('daemon', help='Daemon options')
     parser_daemon.add_argument('what', default='status', const='status', nargs='?',
-                               choices=['start', 'stop', 'status', 'systemd'])
+                               choices=['start', 'stop', 'status'])
+
+    parser_make_script = subparsers.add_parser('make_script', help='Make useful scripts')
+    parser_make_script.add_argument('what', nargs='?', choices=['pm3_edit', 'systemd'])
+    parser_make_script.add_argument('-s', '--show_only', action='store_true', help='Show only')
 
     parser_ping = subparsers.add_parser('ping', help='Ensure pm3 daemon has been launched')
     parser_ping.add_argument('-v', '--verbose', action='store_true', help='verbose')
@@ -379,8 +396,32 @@ def main():
             # Presumo che i processi nascosti siano interessanti per lo status
             print(_ps('hidden_only', 'table'))
 
+    elif args.subparser == 'make_script':
         if args.what == 'systemd':
-            _make_systemd_init_script()
+            main_interpreter = config['main_section'].get('main_interpreter')
+            backend_cmd = config['backend'].get('cmd')
+            exec_start = f'{main_interpreter} {backend_cmd}' if main_interpreter else backend_cmd
+            format_values = {
+                'USER': os.getlogin(),
+                'EXE': exec_start,
+            }
+            filename = 'systemd.sh'
+            how_to_install = 'sudo bash systemd.sh'
+            _make_script(filename,
+                         'pm3_edit',
+                         format_values=format_values,
+                         how_to_install=how_to_install,
+                         show_only=args.show_only)
+
+        elif args.what == 'pm3_edit':
+            filename = 'pm3_edit.sh'
+            how_to_install = f'chmod 755 {filename}'
+            hot_to_use = f'./{filename} <id_or_name>'
+            _make_script(filename,
+                         'pm3_edit',
+                         how_to_install=how_to_install,
+                         how_to_use=hot_to_use,
+                         show_only=args.show_only)
 
     elif args.subparser == 'ls':
         id_or_name = args.id_or_name or 'all'
@@ -474,13 +515,17 @@ def main():
     elif args.subparser == 'load':
         load_file = Path(args.load_file).as_posix()
         if not load_file.endswith('.json'):
-            print('File to load must be a json file')
+            print('[red]File to load must be a json file[/red]')
             sys.exit(1)
 
         with open(load_file, 'r') as f:
-            prl = json.load(f)
+            try:
+                prl = json.load(f)
+            except json.decoder.JSONDecodeError as e:
+                print(f'[red]ERROR:[/red] {load_file} is not a valid json file')
+                print(f' -> [red]{e}[/red]')
+                sys.exit(1)
         for pr in prl:
-            #print(pr)
             p = Process(**pr)
             if args.load_yes:
                 r = 'y'

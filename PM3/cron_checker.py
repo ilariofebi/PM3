@@ -19,6 +19,7 @@ base_url = config['backend'].get('url')
 sleep_time = int(config['cron_checker'].get('sleep_time'))
 
 def _get(path) -> RetMsg:
+    #TODO: duplicato presente in cli.py
     try:
         r = requests.get(f'{base_url}/{path}')
     except requests.exceptions.ConnectionError as e:
