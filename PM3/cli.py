@@ -56,6 +56,7 @@ def _setup():
 
     if not Path(config_file).is_file():
         config = ConfigParser()
+        tcp_port = os.geteuid() + 6979
         config['main_section'] = {
             'pm3_home_dir': pm3_home_dir,
             'pm3_db': f'{pm3_home_dir}/pm3_db.json',
@@ -65,7 +66,7 @@ def _setup():
         config['backend'] = {
             'name': '__backend__',
             'cmd': cmd_backend,
-            'url': 'http://127.0.0.1:7979/',
+            'url': f'http://127.0.0.1:{tcp_port}/',
         }
         config['cron_checker'] = {
             'name': '__cron_checker__',
