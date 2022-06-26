@@ -298,24 +298,25 @@ def main():
     parser_new.add_argument('--stdout', dest='pm3_stdout', help='std out')
     parser_new.add_argument('--stderr', dest='pm3_stderr', help='std err')
     parser_new.add_argument('--interpreter', dest='interpreter', help='interpreter path')
+    parser_new.add_argument('--max-restart', dest='max_restart', type=int, default=1000, help='maximal restart times')
 
     parser_start = subparsers.add_parser('start', help='start a process by id or name')
-    parser_start.add_argument('id_or_name', help='Start id or process name')
+    parser_start.add_argument('id_or_name', help='id or process name')
 
     parser_stop = subparsers.add_parser('stop', help='stop a process by id or name')
-    parser_stop.add_argument('id_or_name', help='Stop id or process name')
+    parser_stop.add_argument('id_or_name', help='id or process name')
 
     parser_restart = subparsers.add_parser('restart', help='restart a process by id or name')
-    parser_restart.add_argument('id_or_name', help='Restart id or process name')
+    parser_restart.add_argument('id_or_name', help='id or process name')
 
     parser_restart = subparsers.add_parser('reset', help='reset process counter for id or name')
-    parser_restart.add_argument('id_or_name', help='Restart id or process name')
+    parser_restart.add_argument('id_or_name', help='id or process name')
 
     parser_rm = subparsers.add_parser('rm', help='remove a process')
     parser_rm.add_argument('id_or_name', help='Remove id or process name')
 
     parser_rename = subparsers.add_parser('rename', help='rename a process')
-    parser_rename.add_argument('id_or_name', help='Remove id or process name')
+    parser_rename.add_argument('id_or_name', help='id or process name')
     parser_rename.add_argument('-n', '--name', dest='pm3_name', help='name into pm3', required=True)
 
     parser_log = subparsers.add_parser('log', help='show log for a process')
@@ -327,6 +328,10 @@ def main():
     parser_err.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
     parser_err.add_argument('-f', '--follow', action='store_true', help='tail follow')
     parser_err.add_argument('-n', '--lines', const=10, default=10, nargs='?', type=int, help='how many lines')
+
+    parser_flush = subparsers.add_parser('flush', help='Flush logs')
+    parser_flush.add_argument('id_or_name', help='id or process name')
+    parser_flush.add_argument('what', nargs='?', choices=['log', 'err', 'all'])
 
     parser_dump = subparsers.add_parser('dump', help='dump process in file')
     parser_dump.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
@@ -441,7 +446,8 @@ def main():
                     shell=args.pm3_shell,
                     autorun=args.pm3_autorun,
                     stdout=args.pm3_stdout or '',
-                    stderr=args.pm3_stderr or '')
+                    stderr=args.pm3_stderr or '',
+                    max_restart=args.max_restart)
         res = _post('new', p.dict())
         if res.err:
             print(res)
@@ -494,6 +500,29 @@ def main():
                 except KeyboardInterrupt:
                     #print('CTRL+C')
                     pass
+
+    elif args.subparser == 'flush':
+        res = _get(f"ls/{args.id_or_name}")
+        if args.what is None:
+            print(parser_flush.format_help())
+        else:
+            arg_map = dict(
+                err=['stderr'],
+                log=['stdout'],
+                all=['stdout', 'stderr'],
+            )
+            if res and not res.err:
+                for p in res.payload:
+                    for std in arg_map[args.what]:
+                        ftt = p[std]
+
+                        if not Path(ftt).is_file():
+                            print(f"[yellow] !!! file {ftt} don't exist !!! [/yellow]")
+                            continue
+                        else:
+                            open(Path(ftt), 'w').close()
+                            print(f"[yellow2] {ftt} is emptied [/yellow2]")
+
 
     elif args.subparser == 'dump':
         res = _get(f"ls/{args.id_or_name or 'all'}")

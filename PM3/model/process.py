@@ -99,7 +99,7 @@ class ProcessList(BaseModel):
     pm3_name: str
     cmd: str
     cwd: str = Path.home().as_posix()
-    pid: int = -1
+    pid: Union[int, None] = -1
     restart: Union[int, str] = ''
     running: bool = False
     autorun: Union[bool, str] = False
@@ -108,6 +108,9 @@ class ProcessList(BaseModel):
     def _formatter(cls, values):
         # Fromatting running
         values['running'] = True if values['pid'] > 0 else False
+
+        # Formatting pid
+        values['pid'] = values['pid'] if values['pid'] > 0 else None
 
         # Formatting restart
         n_restart = values['restart'] if values['restart'] > 0 else 0
@@ -154,6 +157,11 @@ class Process(BaseModel):
         # stderr
         errfile = f"{values['pm3_name']}_{values['pm3_id']}.err"
         values['stderr'] = values['stderr'] or Path(values['pm3_home'], errfile).as_posix()
+
+        # Max restart
+        if values['max_restart'] is None or values['max_restart'] < 1:
+            values['max_restart'] = 1000
+
         return values
 
     @property

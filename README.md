@@ -1,7 +1,6 @@
 # PM3
 Like pm2 without node.js ;-)
-![](https://github.com/ilariofebi/PM3/blob/main/screenshots/ls.png "pm3 ls image")
-
+![](https://github.com/ilariofebi/PM3/blob/main/screenshots/ls.png?raw=true)
 # PM3 CheatSheet:
 ### Install and update
 ```
@@ -20,6 +19,7 @@ pm3 ping            # Ensure pm3 daemon has been launched
 pm3 new '/bin/sleep 10' -n sleep10                                  # Create a new process with name sleep10
 pm3 new '/bin/sleep 10' -n sleep10 --autorun                        # Create a new process with autorun option
 pm3 new "script.py" --interpreter "/venv/bin/python" --cwd "/tmp"   # Create a new process with interpreter and cwd definition
+pm3 new '/bin/sleep 5' --max-restart 10 --autorun                   # Stops restarting the process after 10 restarts        
 ```
 ### Actions
 ```
@@ -50,6 +50,8 @@ pm3 load dump.json          # Load all configuration processes from dump.json fi
 pm3 log            # Display all processes logs
 pm3 log 5 -f       # Display and follow log of process 5
 pm3 err 2 -n 50    # Display last 50 rows of process 5 error log 
+pm3 flush 1 log    # Empty log file of process 1
+pm3 flush all err  # Empty err file of all process
 ```
 
 ### Useful script generation
