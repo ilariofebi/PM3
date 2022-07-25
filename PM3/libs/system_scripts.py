@@ -20,7 +20,7 @@ echo 'systemctl daemon-reload'
 systemctl daemon-reload
 
 echo 'systemctl enable pm3_{USER}'
-systemctl enable pm3
+systemctl enable pm3_{USER}
 
 echo 'systemctl start pm3_{USER}'
 systemctl start pm3_{USER}

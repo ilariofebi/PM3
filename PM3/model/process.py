@@ -167,14 +167,23 @@ class Process(BaseModel):
     @property
     def is_running(self):
         if self.pid > 0:
+
             try:
+                # Verifico che il pid esita ancora
                 ps = self.ps(full=True)
+                # Verifico che il pid appartenga all'UID corrente
+                ps_cwd = ps.cwd()
             except psutil.NoSuchProcess:
                 self.pid = -1
                 return False
+            except psutil.AccessDenied:
+                self.pid = -1
+                return False
+
             if ps.status() == 'zombie':
                 return True
-            if Path(self.cwd) == Path(ps.cwd()):
+
+            if Path(self.cwd) == Path(ps_cwd):
                 # Minimal check for error in pid
                 return ps.is_running()
             self.pid = -1
