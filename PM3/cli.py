@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import sys
+import shutil
 import time
 import requests
 import argparse, argcomplete
@@ -44,16 +45,8 @@ def _setup():
             cmd_cron_checker = Path(virtualenv_path, 'bin/pm3_cron_checker').as_posix()
         else:
             exe = psutil.Process(os.getpid()).as_dict()['exe']
-
-            if Path('/usr/bin/pm3_backend').is_file():
-                cmd_backend = Path('/usr/bin/pm3_backend').as_posix()
-            else:
-                cmd_backend = '#pm3_backend not found'
-
-            if Path('/usr/bin/pm3_cron_checker').is_file():
-                cmd_cron_checker = Path('/usr/bin/pm3_cron_checker').as_posix()
-            else:
-                cmd_cron_checker = '#pm3_cron_checker not found'
+            cmd_backend = shutil.which("pm3_cron_checker") or '#pm3_backend not found'
+            cmd_cron_checker = shutil.which("pm3_cron_checker") or '#pm3_cron_checker not found'
 
     if not Path(config_file).is_file():
         config = ConfigParser()
