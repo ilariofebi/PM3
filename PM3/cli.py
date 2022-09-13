@@ -368,8 +368,8 @@ def main():
                                   pm3_id=0,
                                   shell=False,
                                   nohup=True,
-                                  stdout=f'{pm3_home_dir}/{backend_process_name}.log',
-                                  stderr=f'{pm3_home_dir}/{backend_process_name}.err')
+                                  stdout=f'{pm3_home_dir}/log/{backend_process_name}.log',
+                                  stderr=f'{pm3_home_dir}/log/{backend_process_name}.err')
                 p = backend.run()
                 time.sleep(2)
                 if psutil.Process(p.pid).is_running():
