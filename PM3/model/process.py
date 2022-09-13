@@ -152,11 +152,11 @@ class Process(BaseModel):
 
         # stdout
         logfile = f"{values['pm3_name']}_{values['pm3_id']}.log"
-        values['stdout'] = values['stdout'] or Path(values['pm3_home'], logfile).as_posix()
+        values['stdout'] = values['stdout'] or Path(values['pm3_home'], 'log', logfile).as_posix()
 
         # stderr
         errfile = f"{values['pm3_name']}_{values['pm3_id']}.err"
-        values['stderr'] = values['stderr'] or Path(values['pm3_home'], errfile).as_posix()
+        values['stderr'] = values['stderr'] or Path(values['pm3_home'], 'log', errfile).as_posix()
 
         # Max restart
         if values['max_restart'] is None or values['max_restart'] < 1:

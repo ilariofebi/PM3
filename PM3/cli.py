@@ -35,6 +35,7 @@ def _setup():
     pm3_home_dir = Path('~/.pm3').expanduser()
     config_file = f'{pm3_home_dir}/config.ini'
     Path(pm3_home_dir).mkdir(mode=0o755, exist_ok=True)
+    Path(pm3_home_dir, 'log').mkdir(mode=0o755, exist_ok=True)
     myself = psutil.Process(os.getpid()).as_dict()
     if 'environ' in myself:
         if virtualenv_path := myself['environ'].get('VIRTUAL_ENV'):
