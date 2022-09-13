@@ -254,6 +254,18 @@ def _show_status(res, light=True):
                 print(f'  {k}={v}')
 
 
+def _local_kill(pid):
+    p = psutil.Process(pid)
+    p.kill()
+    for i in range(5):
+        _ = p.poll()
+        if not p.is_running:
+            break
+        time.sleep(1)
+    else:
+        return False
+    return True
+
 def main():
     config = _read_config()
     pm3_home_dir = config['main_section'].get('pm3_home_dir')
@@ -384,8 +396,12 @@ def main():
 
         if args.what == 'stop':
             if not res.err:
-                os.kill(msg['pid'], signal.SIGKILL)
+                #os.kill(msg['pid'], signal.SIGKILL)
                 print(f"send kill sig to pid {msg['pid']}")
+                if _local_kill(int(msg['pid'])):
+                    print(f"[green]process with pid {msg['pid']} killed[/green]")
+                else:
+                    print(f"[red]can't stop process with pid: {msg['pid']}[/red]")
             else:
                 print('process already stopped')
                 #print(res)
