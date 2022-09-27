@@ -150,8 +150,8 @@ def _local_kill(proc):
     else:
         return KillMsg(msg='OK', alive=[alive_gone(pid=local_pid),], warn=True)
     # Elimino l'elemento dal dizionario
-    _ = local_popen_process.pop(proc.pid)
-    return KillMsg(msg='OK', gone=[alive_gone(pid=local_pid),])
+    _ = local_popen_process.pop(local_pid, None)
+    return KillMsg(msg='OK', gone=[alive_gone(pid=local_pid), ])
 
 def _interal_poll():
     for local_pid, p in local_popen_process.items():
