@@ -254,17 +254,16 @@ def _show_status(res, light=True):
                 print(f'  {k}={v}')
 
 
-def _local_kill(pid):
-    p = psutil.Process(pid)
-    p.kill()
-    for i in range(5):
-        _ = p.poll()
-        if not p.is_running:
-            break
-        time.sleep(1)
-    else:
-        return False
-    return True
+def killtree(pid, killme=True, signal=9):
+    """Kill a process tree"""
+    myself = psutil.Process(int(pid))
+    children = myself.children(recursive=True)
+    if killme:
+        children.append(myself)
+    for proc in children:
+        proc.send_signal(signal)
+
+    return bool(psutil.wait_procs(children))
 
 def main():
     config = _read_config()
@@ -397,11 +396,15 @@ def main():
         if args.what == 'stop':
             if not res.err:
                 #os.kill(msg['pid'], signal.SIGKILL)
-                print(f"send kill sig to pid {msg['pid']}")
-                if _local_kill(int(msg['pid'])):
-                    print(f"[green]process with pid {msg['pid']} killed[/green]")
+                #TODO: BUG quando lo start viene fatto da cli, lo stop fallisce perche' non prende il pid padre ma un
+                # figlio. Per rimediare:
+                # pid_to_kill = http_get(pid of backend) or msg['pid']
+                pid_to_kill = int(msg['pid'])
+                print(f"send kill sig to pid {pid_to_kill}")
+                if killtree(pid_to_kill):
+                    print(f"[green]process with pid {pid_to_kill} killed[/green]")
                 else:
-                    print(f"[red]can't stop process with pid: {msg['pid']}[/red]")
+                    print(f"[red]can't stop process with pid: {pid_to_kill}[/red]")
             else:
                 print('process already stopped')
                 #print(res)
