@@ -8,7 +8,7 @@ with open("requirements.txt", "r") as fh:
 
 setuptools.setup(
     name="PM3",
-    version="0.3.16",
+    version="0.3.17",
     author="Ilario Febi",
     author_email="ilario@febi.biz",
     description="Like pm2 without node.js ;-)",

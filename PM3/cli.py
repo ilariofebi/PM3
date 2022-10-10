@@ -18,6 +18,7 @@ from configparser import ConfigParser
 import psutil
 import asyncio
 from pytailer import async_fail_tail
+import getpass
 
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -45,7 +46,7 @@ def _setup():
             cmd_cron_checker = Path(virtualenv_path, 'bin/pm3_cron_checker').as_posix()
         else:
             exe = psutil.Process(os.getpid()).as_dict()['exe']
-            cmd_backend = shutil.which("pm3_cron_checker") or '#pm3_backend not found'
+            cmd_backend = shutil.which("pm3_backend") or '#pm3_backend not found'
             cmd_cron_checker = shutil.which("pm3_cron_checker") or '#pm3_cron_checker not found'
 
     if not Path(config_file).is_file():
@@ -419,7 +420,8 @@ def main():
             backend_cmd = config['backend'].get('cmd')
             exec_start = f'{main_interpreter} {backend_cmd}' if main_interpreter else backend_cmd
             format_values = {
-                'USER': os.getlogin(),
+                #'USER': os.getlogin(),
+                'USER': getpass.getuser(),
                 'EXE': exec_start,
             }
             filename = 'systemd.sh'
