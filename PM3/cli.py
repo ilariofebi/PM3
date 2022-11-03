@@ -153,7 +153,7 @@ def _parse_retmsg(res: RetMsg):
             print(f"[green]{res.msg}[/green]")
 
 
-def _ls(id_or_name='all', format='table'):
+def _ls(id_or_name='all', _format='table'):
     res = _get(f'ls/{id_or_name}')
     if res.err:
         _parse_retmsg(res)
@@ -161,14 +161,16 @@ def _ls(id_or_name='all', format='table'):
 
     if res:
         payload_sorted = sorted(res.payload, key=lambda item: item.get("pm3_id"))
-        if format == 'table':
+        if _format == 'table':
             return _tabulate_ls(payload_sorted)
+        elif _format == 'json':
+            return json.dumps([ProcessList(**i).dict() for i in payload_sorted], indent=2)
         else:
             return _show_list(payload_sorted)
     else:
         return '[yellow]there is nothing to look at[/yellow]'
 
-def _ps(id_or_name='all', format='table'):
+def _ps(id_or_name='all', _format='table'):
     res = _get(f'ps/{id_or_name}')
     if res.err:
         _parse_retmsg(res)
@@ -177,8 +179,10 @@ def _ps(id_or_name='all', format='table'):
     if not res.err:
         if res.payload:
             payload_sorted = sorted(res.payload, key=lambda item: item.get("pm3_id"))
-            if format == 'table':
+            if _format == 'table':
                 return _tabulate_ps(payload_sorted)
+            elif _format == 'json':
+                return json.dumps([ProcessStatus(**p).dict() for p in payload_sorted])
             else:
                 payload_sorted = [ProcessStatus(**p).dict() for p in payload_sorted]
                 return _show_list(payload_sorted)
@@ -289,10 +293,12 @@ def main():
     parser_ls = subparsers.add_parser('ls', help='process list')
     parser_ls.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
     parser_ls.add_argument('-l', '--list', action='store_true', help='List format')
+    parser_ls.add_argument('-j', '--json', action='store_true', help='Json format')
 
     parser_ps = subparsers.add_parser('ps', help='process status')
     parser_ps.add_argument('id_or_name', const='all', nargs='?', type=str, help='id or process name')
     parser_ps.add_argument('-l', '--list', action='store_true', help='List format')
+    parser_ps.add_argument('-j', '--json', action='store_true', help='Json format')
 
     parser_new = subparsers.add_parser('new', help='create a new process')
     parser_new.add_argument('cmd', help='linux command')
@@ -444,12 +450,12 @@ def main():
 
     elif args.subparser == 'ls':
         id_or_name = args.id_or_name or 'all'
-        format_ = 'list' if args.list else 'table'
+        format_ = 'list' if args.list else 'json' if args.json else 'table'
         print(_ls(id_or_name, format_))
 
     elif args.subparser == 'ps':
         id_or_name = args.id_or_name or 'all'
-        format_ = 'list' if args.list else 'table'
+        format_ = 'list' if args.list else 'json' if args.json else 'table'
         print(_ps(id_or_name, format_))
 
     elif args.subparser == 'new':
