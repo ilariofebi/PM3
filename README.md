@@ -40,8 +40,10 @@ pm3 rm 3            # Stop and delete process with id 3
 ```
 pm3 ls                 # Display all processes
 pm3 ls -l              # Display all processes in list format
+pm3 ls -j              # Display all processes in json format
 pm3 ps 5               # Display process 5 status
 pm3 ps -l ALL          # Display ALL processes (hidden or not) status in list format
+pm3 ps -j ALL          # Display ALL processes (hidden or not) status in json format
 ```
 
 ### Dump and Load

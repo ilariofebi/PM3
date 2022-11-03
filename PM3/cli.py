@@ -182,7 +182,7 @@ def _ps(id_or_name='all', _format='table'):
             if _format == 'table':
                 return _tabulate_ps(payload_sorted)
             elif _format == 'json':
-                return json.dumps([ProcessStatus(**p).dict() for p in payload_sorted])
+                return json.dumps([ProcessStatus(**p).dict() for p in payload_sorted], indent=2)
             else:
                 payload_sorted = [ProcessStatus(**p).dict() for p in payload_sorted]
                 return _show_list(payload_sorted)
