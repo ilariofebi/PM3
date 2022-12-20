@@ -46,7 +46,7 @@ def check_autostart():
                 else:
                     # Restart ERROR
                     print(res_start)
-            elif config['cron_checker'].get('debug'):
+            elif config['cron_checker'].getboolean('debug'):
                 print('process running:')
                 print(p)
     else:
