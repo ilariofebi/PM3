@@ -20,7 +20,8 @@ import asyncio
 from pytailer import async_fail_tail
 import getpass
 
-#logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger()
 
 async def tailfile(f, lines=10):
     with async_fail_tail(f, lines=lines) as tail:
@@ -108,7 +109,7 @@ def _get(path) -> RetMsg:
     config = _read_config()
     base_url = config['backend'].get('url')
     try:
-        r = requests.get(f'{base_url}/{path}')
+        r = requests.get(f'{base_url}/{path}', timeout=5)
     except requests.exceptions.ConnectionError as e:
         return RetMsg(err=True, msg=str(e))
 
@@ -257,7 +258,23 @@ def _show_status(res, light=True):
                 print(f'  {k}=[bold italic yellow on red blink]{v}')
             else:
                 print(f'  {k}={v}')
+            
+def _dump(args) -> str:
+        res = _get(f"ls/{args.id_or_name or 'all'}")
 
+        if res and not res.err:
+            out = [_clean_ls_proc(p) for p in res.payload]
+            try:
+                if args.dump_file:
+                    dump_file = Path(args.dump_file).as_posix()
+                    if not dump_file.endswith('.json'):
+                        print('Dump file must be a .json file')
+                        sys.exit(1)
+                    with open(dump_file, 'w') as f:
+                        json.dump(out, fp=f, indent=4)
+            except AttributeError:
+                print(json.dumps(out, indent=4))
+            return json.dumps(out, indent=4)
 
 def killtree(pid, killme=True, signal=9):
     """Kill a process tree"""
@@ -269,6 +286,7 @@ def killtree(pid, killme=True, signal=9):
         proc.send_signal(signal)
 
     return bool(psutil.wait_procs(children))
+
 
 def main():
     config = _read_config()
@@ -312,6 +330,9 @@ def main():
     parser_new.add_argument('--stderr', dest='pm3_stderr', help='std err')
     parser_new.add_argument('--interpreter', dest='interpreter', help='interpreter path')
     parser_new.add_argument('--max-restart', dest='max_restart', type=int, default=1000, help='maximal restart times')
+
+    parset_edit = subparsers.add_parser('edit', help='edit existing process')
+    parset_edit.add_argument('id_or_name', help='id or process name')
 
     parser_start = subparsers.add_parser('start', help='start a process by id or name')
     parser_start.add_argument('id_or_name', help='id or process name')
@@ -457,6 +478,44 @@ def main():
         id_or_name = args.id_or_name or 'all'
         format_ = 'list' if args.list else 'json' if args.json else 'table'
         print(_ps(id_or_name, format_))
+    elif args.subparser == 'edit':
+        import subprocess
+        from shutil import which
+        editors = ("nano", "pico", "vim", "vi", "emacs")
+        editor_path = str()
+        for editor in editors: 
+            if editor_path := which(editor): break
+
+        import tempfile
+        tmpFile = tempfile.NamedTemporaryFile(delete=False) # se delete=True non possiamo riaprirlo
+        txt = _dump(args)
+        if txt:
+            try:
+                tmpFile.write(txt.encode())
+                tmpFile.close()
+                logger.debug(f"Opening {tmpFile.name} with {editor_path}")
+                p = subprocess.Popen([editor_path, tmpFile.name])
+                p.wait()
+                tmpFile = open(tmpFile.name, mode='r')
+                try:
+                    prl = json.load(tmpFile)
+                except json.decoder.JSONDecodeError as e:
+                    print(f'[red]ERROR:[/red] {load_file} is not a valid json file')
+                    print(f' -> [red]{e}[/red]')
+                    sys.exit(1)
+
+                for pr in prl:
+                    p = Process(**pr)
+
+                    post_dest = 'new/rewrite'
+                    res = _post(post_dest, p.dict())
+                    _parse_retmsg(res)
+                    logger.debug('done')
+
+            finally:
+                os.remove(tmpFile.name)
+        else: 
+            print("[yellow]nothing to dump![/yellow]")
 
     elif args.subparser == 'new':
         p = Process(cmd=args.cmd,
@@ -547,19 +606,7 @@ def main():
 
 
     elif args.subparser == 'dump':
-        res = _get(f"ls/{args.id_or_name or 'all'}")
-
-        if res and not res.err:
-            out = [_clean_ls_proc(p) for p in res.payload]
-            if args.dump_file:
-                dump_file = Path(args.dump_file).as_posix()
-                if not dump_file.endswith('.json'):
-                    print('Dump file must be a .json file')
-                    sys.exit(1)
-                with open(dump_file, 'w') as f:
-                    json.dump(out, fp=f, indent=4)
-            else:
-                print(json.dumps(out, indent=4))
+        _dump(args)
 
     elif args.subparser == 'load':
         load_file = Path(args.load_file).as_posix()

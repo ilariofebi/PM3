@@ -349,7 +349,9 @@ def main():
     t1.start()
 
     print(f'running on pid: {my_pid}')
-    app.run(debug=True, host=dsn.host, port=dsn.port)
+    app.run(debug=False, use_reloader=False, host=dsn.host, port=dsn.port)
+    # il reloader non fa ricaricare correttamente il backend! perchè ci sono i threads
+    # ricaricare a mano
 
 if __name__ == '__main__':
     main()
