@@ -20,7 +20,7 @@ import asyncio
 from pytailer import async_fail_tail
 import getpass
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger()
 
 async def tailfile(f, lines=10):
@@ -457,16 +457,6 @@ def main():
                          'systemd',
                          format_values=format_values,
                          how_to_install=how_to_install,
-                         show_only=args.show_only)
-
-        elif args.what == 'pm3_edit':
-            filename = 'pm3_edit.sh'
-            how_to_install = f'chmod 755 {filename}'
-            hot_to_use = f'./{filename} <id_or_name>'
-            _make_script(filename,
-                         'pm3_edit',
-                         how_to_install=how_to_install,
-                         how_to_use=hot_to_use,
                          show_only=args.show_only)
 
     elif args.subparser == 'ls':
