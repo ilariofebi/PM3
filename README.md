@@ -65,7 +65,6 @@ pm3 flush all err  # Empty err file of all process
 ### Useful script generation
 ```
 pm3 make_script systemd     # Generate script for install startup systemd configuration
-pm3 make_script pm3_edit    # Generate script for edit process configuration on the fly 
 ```
 
 ### Misc
