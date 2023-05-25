@@ -89,7 +89,7 @@ def _start_process(proc, ion) -> RetMsg:
         except FileNotFoundError as e:
             #print(e)
             # File not found
-            msg = f'File Not Found: {Path(proc.cwd, proc.cmd).as_posix()} ({ion.type}={ion.data})'
+            msg = f'File Not Found: {e.filename} {Path(proc.cwd, proc.cmd).as_posix()} ({ion.type}={ion.data})'
             return RetMsg(msg=msg, err=True)
         else:
             # OK, process started
