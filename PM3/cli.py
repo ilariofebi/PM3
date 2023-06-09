@@ -117,7 +117,7 @@ def _get(path) -> RetMsg:
         ret = r.json()
         return RetMsg(**ret)
     else:
-        return RetMsg(err=True, msg='Connection Error')
+        return RetMsg(err=True, msg=f'Connection Error ({r.status_code})')
 
 def _post(path, jdata):
     config = _read_config()
@@ -125,13 +125,13 @@ def _post(path, jdata):
     try:
         r = requests.post(f'{base_url}/{path}', json=jdata)
     except requests.exceptions.ConnectionError:
-        return RetMsg(err=True, msg='Connection Error')
+        return RetMsg(err=True, msg=f'Connection Error ({r.status_code})')
 
     if r.status_code == 200:
         ret = r.json()
         return RetMsg(**ret)
     else:
-        return RetMsg(err=True, msg='Connection Error')
+        return RetMsg(err=True, msg=f'Connection Error ({r.status_code})')
 
 def _parse_retmsg(res: RetMsg):
     if res.err:
@@ -331,8 +331,8 @@ def main():
     parser_new.add_argument('--interpreter', dest='interpreter', help='interpreter path')
     parser_new.add_argument('--max-restart', dest='max_restart', type=int, default=1000, help='maximal restart times')
 
-    parset_edit = subparsers.add_parser('edit', help='edit existing process')
-    parset_edit.add_argument('id_or_name', help='id or process name')
+    parser_edit = subparsers.add_parser('edit', help='edit existing process')
+    parser_edit.add_argument('id_or_name', help='id or process name')
 
     parser_start = subparsers.add_parser('start', help='start a process by id or name')
     parser_start.add_argument('id_or_name', help='id or process name')
@@ -416,7 +416,7 @@ def main():
                     if res.err:
                         print(res)
                     else:
-                        print('[green]process started[/green]')
+                        print('[green]daemon process started[/green]')
                 else:
                     print('[red]process NOT started[/red]')
 
