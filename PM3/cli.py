@@ -284,6 +284,7 @@ def killtree(pid, killme=True, signal=9):
         children.append(myself)
     for proc in children:
         proc.send_signal(signal)
+        logging.debug(f"send ing kill to {proc.pid}" )
 
     return bool(psutil.wait_procs(children))
 

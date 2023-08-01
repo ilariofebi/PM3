@@ -138,10 +138,11 @@ def new_process():
         return _resp(RetMsg(msg=msg, err=True))
 
 
-def _local_kill(proc):
-    p = local_popen_process[proc.pid]
+def _local_kill(proc ):
+    p : Process = local_popen_process[proc.pid]
     local_pid = p.pid
-    p.kill()
+    #p.kill()
+    Process.kill_proc_tree(local_pid)
     for i in range(5):
         _ = p.poll()
         if not proc.is_running:
@@ -169,6 +170,7 @@ def _interal_poll_thread():
 @app.get("/restart/<id_or_name>")
 @app.get("/rm/<id_or_name>")
 def stop_and_rm_process(id_or_name):
+    logging.debug(f"Stopping process {id_or_name}")
     resp_list = []
     ion = ptbl.find_id_or_name(id_or_name)
     if len(ion.proc) == 0:
@@ -179,8 +181,10 @@ def stop_and_rm_process(id_or_name):
         if proc.pid in local_popen_process:
             # Processi attivati da os.getpid() vanno trattati con popen
             ret = _local_kill(proc)
+            logging.debug('local kill')
         else:
             ret = proc.kill()
+            logging.debug('simple kill')
 
         if ret.msg == 'OK':
             proc.autorun_exclude = True
