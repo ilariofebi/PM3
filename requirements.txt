@@ -1,10 +1,10 @@
 argcomplete==2.0.0
-dsnparse==0.1.15
+dsnparse==0.2.0
 Flask>=2.0.0
 pendulum==2.1.2
 psutil>=5.2.0
 pydantic>=1.8.2
 requests>=2.26.0
-rich==10.16.2
+rich==13.3.5
 tinydb>=4.5.2
 pytailer==0.1.0
