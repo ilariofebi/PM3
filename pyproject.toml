@@ -1,0 +1,38 @@
+# configure .env for database access
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "PM3"
+version = "0.3.21"
+authors = [
+    {name = "Ilario Febi", email = "i.febi@febi.biz"},
+]
+description = "Like pm2 without node.js ;-)"
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["PM3"]
+classifiers = [
+    "Framework :: Flask",
+    "Programming Language :: Python :: 3",
+]
+
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[project.scripts]
+pm3 = "PM3.cli:main"
+pm3_cron_checker = "PM3.cron_checker:main"
+pm3_backend = "PM3.app:main"
+
+[tool.setuptools]
+packages = ['PM3', 'PM3.libs', 'PM3.model']
+#package-dir = { red_carpet = "src" }
+
+
+[tool.setuptools.package-data]
+rocket_libs = ["./**"]
+
