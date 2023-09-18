@@ -1,3 +1,5 @@
+from logging.handlers import RotatingFileHandler
+import threading, logging
 from pydantic import BaseModel, validator, root_validator
 from typing import Union
 import subprocess as sp
@@ -92,6 +94,48 @@ class ProcessStatus(BaseModel):
     restart: int
     autorun: bool
     nohup: bool
+
+class LogPipe(threading.Thread):
+
+    def __init__(self, filename, level = logging.DEBUG):
+        """Setup the object with a logger and a loglevel
+        and start the thread
+        """
+        # nuovo logger
+        from uuid import uuid4
+        logger = logging.getLogger( str(uuid4()))
+        handler = RotatingFileHandler(filename, maxBytes=1000*1000*30, backupCount=20)
+        logger.level = level
+        handler.level = level
+        logger.addHandler( handler )
+
+        threading.Thread.__init__(self)
+        self.daemon = False
+        self.level = level
+        self.logger = logger
+        self.fdRead, self.fdWrite = os.pipe()
+        self.pipeReader = os.fdopen(self.fdRead)
+
+        self.start()
+
+    def fileno(self):
+        """Return the write file descriptor of the pipe
+        """
+        return self.fdWrite
+
+    def run(self):
+        """Run the thread, logging everything.
+        """
+        for line in iter(self.pipeReader.readline, ''):
+            self.logger.log(self.level, line.strip('\n'))
+
+        self.pipeReader.close()
+
+    def close(self):
+        """Close the write end of the pipe.
+        """
+        os.close(self.fdWrite)
+
 
 class ProcessList(BaseModel):
     # Utilizzata per mostrare i dati in formato tabellare
@@ -242,6 +286,9 @@ class Process(BaseModel):
             return KillMsg(msg='OK', alive=alive, gone=gone)
 
     def run(self):
+        #fErrHandler = RotatingFileHandler(self.stderr, maxBytes=1000*1000*10, backupCount=5)
+        #fout = LogPipe(self.stderr)
+        #ferr = LogPipe(self.stdout)
         fout = open(self.stdout, 'a')
         ferr = open(self.stderr, 'a')
         if isinstance(self.cmd, list):
@@ -255,6 +302,7 @@ class Process(BaseModel):
             cmd.insert(0, self.interpreter)
 
         if self.nohup:
+            print("starting with nohup")
             if 'nohup' not in cmd[0]:
                 cmd.insert(0, '/usr/bin/nohup')
             # print('detach', cmd)
@@ -266,6 +314,7 @@ class Process(BaseModel):
                          bufsize=0,
                          preexec_fn=os.setpgrp)
         else:
+            print("starting w/o nohup")
             p = sp.Popen(cmd,
                          cwd=self.cwd,
                          shell=self.shell,

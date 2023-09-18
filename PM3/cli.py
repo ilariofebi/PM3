@@ -125,7 +125,7 @@ def _post(path, jdata):
     try:
         r = requests.post(f'{base_url}/{path}', json=jdata)
     except requests.exceptions.ConnectionError:
-        return RetMsg(err=True, msg=f'Connection Error ({r.status_code})')
+        return RetMsg(err=True, msg=f'Connection Error')
 
     if r.status_code == 200:
         ret = r.json()
