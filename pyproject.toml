@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "PM3"
-version = "0.3.21"
+version = "0.3.24"
 authors = [
     {name = "Ilario Febi", email = "i.febi@febi.biz"},
 ]
@@ -30,9 +30,4 @@ pm3_backend = "PM3.app:main"
 
 [tool.setuptools]
 packages = ['PM3', 'PM3.libs', 'PM3.model']
-#package-dir = { red_carpet = "src" }
-
-
-[tool.setuptools.package-data]
-rocket_libs = ["./**"]
 
