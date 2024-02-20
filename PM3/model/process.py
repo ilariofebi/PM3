@@ -1,6 +1,6 @@
 from logging.handlers import RotatingFileHandler
 import threading, logging
-from pydantic import BaseModel, validator, root_validator
+from pydantic import BaseModel, validator, model_validator
 from typing import Union
 import subprocess as sp
 import psutil
@@ -48,7 +48,7 @@ class ProcessStatusLight(BaseModel):
             v = ' '.join(v)
         return v
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     def time_ago_generator(cls, values):
         create_time = pendulum.from_timestamp(values['create_time'])
         time_ago = pendulum.now() - create_time
@@ -148,7 +148,7 @@ class ProcessList(BaseModel):
     running: bool = False
     autorun: Union[bool, str] = False
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     def _formatter(cls, values):
         # Fromatting running
         values['running'] = True if values['pid'] > 0 else False
@@ -186,9 +186,9 @@ class Process(BaseModel):
     stderr: str = ''
     nohup: bool = False
     max_restart: int = 1000
-    autorun_exclude = False
+    autorun_exclude : bool = False
 
-    @root_validator
+    @model_validator(mode="before")
     def _formatter(cls, values):
         # pm3_name
         values['pm3_name'] = values['pm3_name'] or values['cmd'].split(" ")[0]
@@ -203,7 +203,7 @@ class Process(BaseModel):
         values['stderr'] = values['stderr'] or Path(values['pm3_home'], 'log', errfile).as_posix()
 
         # Max restart
-        if values['max_restart'] is None or values['max_restart'] < 1:
+        if values.get('max_restart') is None or values['max_restart'] < 1:
             values['max_restart'] = 1000
 
         return values
@@ -302,7 +302,7 @@ class Process(BaseModel):
             cmd.insert(0, self.interpreter)
 
         if self.nohup:
-            print("starting with nohup")
+            # print("starting with nohup")
             if 'nohup' not in cmd[0]:
                 cmd.insert(0, '/usr/bin/nohup')
             # print('detach', cmd)

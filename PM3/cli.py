@@ -413,7 +413,7 @@ def main():
                 p = backend.run()
                 time.sleep(2)
                 if psutil.Process(p.pid).is_running():
-                    res = _post('new/rewrite', backend.dict())
+                    res = _post('new/rewrite', backend.model_dump())
                     if res.err:
                         print(res)
                     else:

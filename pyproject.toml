@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "PM3"
-version = "0.3.24"
+version = "0.3.25"
 authors = [
     {name = "Ilario Febi", email = "i.febi@febi.biz"},
 ]
