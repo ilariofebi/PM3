@@ -26,18 +26,18 @@ class Pm3Table:
         return self.tbl.contains(where(col) == val)
 
     def select(self, proc, col='pm3_id'):
-        return self.tbl.get(where(col) == proc.dict()[col])
+        return self.tbl.get(where(col) == proc.model_dump()[col])
 
     def delete(self, proc, col='pm3_id'):
         if self.select(proc, col):
-            self.tbl.remove(where(col) == proc.dict()[col])
+            self.tbl.remove(where(col) == proc.model_dump()[col])
             return True
         else:
             return False
 
     def update(self, proc, col='pm3_id'):
         if self.select(proc, col):
-            self.tbl.update(proc, where(col) == proc.dict()[col])
+            self.tbl.update(proc, where(col) == proc.model_dump()[col])
             return True
         else:
             return False

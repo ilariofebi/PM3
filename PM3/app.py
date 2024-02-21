@@ -48,7 +48,7 @@ def _resp(res: RetMsg) -> dict:
         logging.error(res.msg)
     if res.warn:
         logging.warning(res.msg)
-    return res.dict()
+    return res.model_dump()
 
 def _insert_process(proc: Process, rewrite=False):
     proc.pm3_id = ptbl.next_id() if proc.pm3_id is None else proc.pm3_id
@@ -60,13 +60,13 @@ def _insert_process(proc: Process, rewrite=False):
     if tbl.contains(where('pm3_id') == proc.pm3_id):
         if rewrite:
             tbl.remove(where('pm3_id') == proc.pm3_id)
-            tbl.insert(proc.dict())
+            tbl.insert(proc.model_dump())
             return 'OK'
         return 'ID_ALREADY_EXIST'
     elif tbl.contains(where('pm3_name') == proc.pm3_name):
         return 'NAME_ALREADY_EXIST'
     else:
-        tbl.insert(proc.dict())
+        tbl.insert(proc.model_dump())
         return 'OK'
 
 def _start_process(proc, ion) -> RetMsg:
@@ -111,8 +111,9 @@ def ps_proc_as_dict(ps_proc):
 
 @app.get("/ping")
 def pong():
-    payload = {'pid': os.getpid()}
-    return _resp(RetMsg(msg='PONG!', err=False, payload=payload))
+    pid = os.getpid()
+    payload = {'pid': pid}
+    return _resp(RetMsg(msg=f'PONG! pid {pid}', err=False, payload=payload))
 
 @app.post("/new")
 @app.post("/new/rewrite")
@@ -227,7 +228,7 @@ def ls_process(id_or_name):
         proc.is_running
         ptbl.update(proc)
         payload.append(proc)
-    return RetMsg(msg='OK', err=False, payload=payload).dict()
+    return RetMsg(msg='OK', err=False, payload=payload).model_dump()
 
 @app.get("/ps/<id_or_name>")
 def pstatus(id_or_name):
@@ -244,11 +245,11 @@ def pstatus(id_or_name):
     payload = []
     for proc in procs:
         if proc.pid > 0:
-            payload.append({**proc.dict(), **ps_proc_as_dict(psutil.Process(proc.pid))})
+            payload.append({**proc.model_dump(), **ps_proc_as_dict(psutil.Process(proc.pid))})
 
             # Children process
             for ps_proc in psutil.Process(proc.pid).children(recursive=True):
-                payload.append({**proc.dict(), **ps_proc_as_dict(ps_proc)})
+                payload.append({**proc.model_dump(), **ps_proc_as_dict(ps_proc)})
 
     return _resp(RetMsg(msg='OK', err=False, payload=payload))
 

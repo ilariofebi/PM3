@@ -13,6 +13,7 @@ class RetMsg(BaseModel):
     err: bool = False
     warn: bool = False
     payload: Optional[Union[list, dict, None]] = None
+    err_code: Optional[int] = 0
 
 class KillMsg(BaseModel):
     msg: str = ''
