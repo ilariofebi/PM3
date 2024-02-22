@@ -1,14 +1,42 @@
 from PM3.model.pm3_protocol import ION
 from PM3.model.process import Process
 from tinydb import where
+from tinydb.table import Table
+import fcntl
 
 def hidden_proc(x: str) -> bool:
     return x.startswith('__') and x.endswith('__')
 
-class Pm3Table:
-    def __init__(self, tbl):
-        self.tbl = tbl
 
+class Pm3Table:
+    def __init__(self, tbl: Table, lock_file: str):
+        self.tbl = tbl
+        self.lock_file = lock_file
+        self.locked_file_descriptor = None
+    
+    def acquireLock(self):
+        ''' acquire exclusive lock file access '''
+        locked_file_descriptor = open(self.lock_file, 'w+')
+        fcntl.lockf(locked_file_descriptor, fcntl.LOCK_EX)
+        self.locked_file_descriptor = locked_file_descriptor
+
+    def releaseLock(self):
+        ''' release exclusive lock file access '''
+        self.locked_file_descriptor.close()
+        
+    def locked_function():
+        def wrapper(func):
+            def inner(self, *args, **kwargs):
+                self.acquireLock()
+                print("locking")
+                output = func(self, *args, **kwargs)
+                self.releaseLock()
+                print("unlocking")
+                return output
+            return inner
+        return wrapper
+    
+    @locked_function()
     def next_id(self, start_from=None):
         if start_from:
             # Next Id start from specific id
@@ -22,12 +50,15 @@ class Pm3Table:
             else:
                 return 1
 
+    @locked_function()
     def check_exist(self, val, col='pm3_id'):
         return self.tbl.contains(where(col) == val)
 
+    @locked_function()
     def select(self, proc, col='pm3_id'):
         return self.tbl.get(where(col) == proc.model_dump()[col])
 
+    @locked_function()
     def delete(self, proc, col='pm3_id'):
         if self.select(proc, col):
             self.tbl.remove(where(col) == proc.model_dump()[col])
@@ -35,6 +66,7 @@ class Pm3Table:
         else:
             return False
 
+    @locked_function()
     def update(self, proc, col='pm3_id'):
         if self.select(proc, col):
             self.tbl.update(proc, where(col) == proc.model_dump()[col])
@@ -42,6 +74,7 @@ class Pm3Table:
         else:
             return False
 
+    @locked_function()
     def find_id_or_name(self, id_or_name, hidden=False) -> ION:
         if id_or_name == 'all':
             # Tutti (nascosti esclusi)

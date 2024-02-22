@@ -28,9 +28,12 @@ if not os.path.isfile(config_file):
 config = ConfigParser()
 config.read(config_file)
 
-db = TinyDB(config['main_section'].get('pm3_db'))
+pm3_db_name = config['main_section'].get('pm3_db')
+pm3_db_lock_file = pm3_db_name + ".lock"
+db = TinyDB(pm3_db_name)
+
 tbl = db.table(config['main_section'].get('pm3_db_process_table'))
-ptbl = Pm3Table(tbl)
+ptbl = Pm3Table(tbl, lock_file=pm3_db_lock_file)
 
 backend_process_name = config['backend'].get('name') or '__backend__'
 cron_checker_process_name = config['cron_checker'].get('name') or '__cron_checker__'
