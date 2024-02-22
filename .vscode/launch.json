@@ -21,6 +21,14 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "Version",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./PM3/cli.py",
+            "args": ["version"],
+            "console": "integratedTerminal"
+        },
+        {
             "name": "Daemon",
             "type": "debugpy",
             "request": "launch",

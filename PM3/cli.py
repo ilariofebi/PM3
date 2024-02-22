@@ -25,6 +25,8 @@ import getpass
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger()
 
+
+
 async def tailfile(f, lines=10):
     with async_fail_tail(f, lines=lines) as tail:
         async for line in tail:  # be careful: infinite loop!
@@ -379,6 +381,8 @@ def main():
     parser_load.add_argument('-r', '--rewrite', dest='load_rewrite', action='store_true', help='rewrite if process already exist')
     parser_load.add_argument('-y', '--yes', dest='load_yes', action='store_true', help='response always yes')
 
+    parser_version = subparsers.add_parser('version', help='check PM3 version')
+
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
     kwargs = vars(args)
@@ -631,6 +635,10 @@ def main():
             else:
                 print(f'[red]only y or n are accepted... skip[/red]')
 
+    elif args.subparser == 'version':
+        import importlib.metadata
+        version = importlib.metadata.version('PM3')
+        print("PM3 " + version)
     else:
         print(parser.format_help())
     # ritorna errore se la chiamata è finita in errore
