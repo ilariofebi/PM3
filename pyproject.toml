@@ -5,9 +5,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "PM3"
-version = "0.3.25"
+version = "0.3.26"
 authors = [
     {name = "Ilario Febi", email = "i.febi@febi.biz"},
+    {name = "Massimiliano Salvemini", email = "ms.salvemini@gmail.com"},
 ]
 description = "Like pm2 without node.js ;-)"
 readme = "README.md"

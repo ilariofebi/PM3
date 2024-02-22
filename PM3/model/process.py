@@ -146,6 +146,7 @@ class ProcessList(BaseModel):
     restart: Union[int, str] = ''
     running: bool = False
     autorun: Union[bool, str] = False
+    autorun_exclude: bool = False
     max_restart: int = 0
 
     @model_validator(mode='after')

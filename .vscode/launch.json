@@ -5,11 +5,27 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Current File",
+            "name": "Start process",
             "type": "debugpy",
             "request": "launch",
             "program": "./PM3/cli.py",
-            "args": ["new", "prova"],
+            "args": ["start", "1"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Stop process",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./PM3/cli.py",
+            "args": ["stop", "1"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Daemon",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./PM3/app.py",
+            "args": [""],
             "console": "integratedTerminal"
         }
     ]

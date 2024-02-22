@@ -193,20 +193,21 @@ def stop_and_rm_process(id_or_name):
             for pk in ret.gone:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) with pid {pk.pid} was killed'
                 resp_list.append(_resp(RetMsg(msg=msg, err=False)))
+        
         elif ret.warn:
             for pk in ret.alive:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) with pid {pk.pid} still alive'
                 resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
-            if ret.alive == 0:
+            if len(ret.alive) == 0:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) not running'
                 resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
         else:
-            msg = f'Strange Error'
+            msg = f'strange Error'
             resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
 
         if request.path.startswith('/rm/'):
             if not ptbl.delete(proc):
-                msg = f'Error updating {proc}'
+                msg = f'error updating {proc}'
                 resp_list.append(_resp(RetMsg(msg=msg, err=True)))
             else:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) removed'
@@ -215,7 +216,9 @@ def stop_and_rm_process(id_or_name):
     if request.path.startswith('/restart/'):
         resp_list += start_process(id_or_name)['payload']
 
-    return _resp(RetMsg(msg='', payload=resp_list))
+    ret_msg = RetMsg(msg='', payload=resp_list)
+
+    return _resp(ret_msg)
 
 @app.get("/ls/<id_or_name>")
 def ls_process(id_or_name):
