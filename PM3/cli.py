@@ -7,7 +7,7 @@ import time
 import requests
 import argparse, argcomplete
 import logging
-from PM3.model.process import Process, ProcessStatus, ProcessStatusLight, ProcessList
+from PM3.model.process import Process, ProcessStatus, ProcessStatusLight
 from PM3.model.pm3_protocol import RetMsg
 from PM3.libs.system_scripts import pm3_scripts
 import PM3.model.errors as PM3_errors
@@ -169,7 +169,7 @@ def _ls(id_or_name='all', _format='table'):
         if _format == 'table':
             return _tabulate_ls(payload_sorted)
         elif _format == 'json':
-            return json.dumps([ProcessList(**i).model_dump() for i in payload_sorted], indent=2)
+            return json.dumps([Process(**i).model_dump() for i in payload_sorted], indent=2)
         else:
             return _show_list(payload_sorted)
     else:
@@ -233,19 +233,21 @@ def _tabulate_ls(data):
 
     for n, r in enumerate(data):
         #r = Process(**r).model_dump()  # Validate and sort
-        r = ProcessList(**r).model_dump()  # Validate and sort
+        r = Process(**r)  # Validate and sort
         if n == 0:
-            for h in r.keys():
-                table.add_column(h)
+            for h, h_info in r.model_fields.items():
+                if h_info.json_schema_extra is not None and h_info.json_schema_extra.get('list') == True:
+                    table.add_column(h)
 
         items = []
-        for k, v in r.items():
-            if 'autorun' in r and r['autorun'] is True and k == 'pid' and v == -1:
+        model = r.model_dump()
+        for k in table.columns:
+            if r.autorun is True and k == 'pid' and model['pid'] == -1:
                 items.append(f'[red]!!![/red]')
-            elif 'autorun' in r and r['autorun'] is False and k == 'pid' and v == -1:
+            elif r.autorun is False and k == 'pid' and model['pid'] == -1:
                 items.append(f'[gray]-[/gray]')
             else:
-                items.append(c.render_str(str(v)))
+                items.append(c.render_str(str( model[k.header] )))
         table.add_row(*items)
     return table
 

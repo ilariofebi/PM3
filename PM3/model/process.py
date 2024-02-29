@@ -1,6 +1,6 @@
 from logging.handlers import RotatingFileHandler
 import threading, logging
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, Union
 import subprocess as sp
 import psutil
@@ -136,9 +136,8 @@ class LogPipe(threading.Thread):
         os.close(self.fdWrite)
 
 
-class ProcessList(BaseModel):
     # Utilizzata per mostrare i dati in formato tabellare
-    pm3_id: int
+
     pm3_name: str
     cmd: str
     cwd: str = Path.home().as_posix()
@@ -146,48 +145,32 @@ class ProcessList(BaseModel):
     restart: Union[int, str] = ''
     running: bool = False
     autorun: Union[bool, str] = False
-    autorun_exclude: bool = False
-    max_restart: int = 0
 
-    @model_validator(mode='after')
-    def _formatter(self):
-        # Fromatting running
-        self.running = True if self.pid > 0 else False
 
-        # Formatting pid
-        self.pid = self.pid if self.pid > 0 else None
 
-        # Formatting restart
-        n_restart = self.restart if self.restart > 0 else 0
-        self.restart = f"{n_restart}/{self.max_restart}"
-
-        # Formatting autorun
-        if self.autorun is False:
-            self.autorun = '[red]disabled[/red]'
-        elif self.autorun and self.autorun_exclude:
-            self.autorun = '[yellow]suspended[/yellow]'
-        elif self.autorun and not self.autorun_exclude:
-            self.autorun = '[green]enabled[/green]'
 
 
 class Process(BaseModel):
     # Struttura vera del processo
-    pm3_id: Optional[int] = None  # None significa che deve essere assegnato da next_id()
-    pm3_name: str
-    cmd: str
-    cwd: Optional[str] = Path.home().as_posix()
-    pid: int = -1
+    pm3_id: Optional[int] = Field(default=None, json_schema_extra={'list': True})  # None significa che deve essere assegnato da next_id()
+    pm3_name: str = Field(json_schema_extra={'list': True})
+    cmd: str = Field(json_schema_extra={'list': True})
+    cwd: Optional[str] = Field(default= Path.home().as_posix() , json_schema_extra={'list': True})
+    pid: int = Field(default=-1 , json_schema_extra={'list': True})
     pm3_home: Optional[str] = Path('~/.pm3/').expanduser().as_posix()
-    restart: int = -1
+    restart: int = Field(default=-1)
     shell: bool = False
-    autorun: bool = False
+    autorun: bool = Field(default=False, json_schema_extra={'list': False})
     interpreter: str = ''
     stdout: str = ''
     stderr: str = ''
     nohup: bool = False
     max_restart: Optional[int] = 1000
     autorun_exclude : bool = False
-    
+    running: bool = Field(default=False, json_schema_extra={'list': True})
+    autorun_status: Optional[str] = Field(default=None, json_schema_extra={'list': True} )
+    restart_status: Optional[str] = Field(default=None, json_schema_extra={'list': True} )
+
     @model_validator(mode='after')
     def _formatter(self):
         # pm3_name
@@ -203,6 +186,22 @@ class Process(BaseModel):
         errfile = f"{self.pm3_name}_{self.pm3_id}.err"
         self.stderr = self.stdout or Path(self.pm3_home, 'log', errfile).as_posix()
 
+        # Fromatting running
+        self.running = True if self.pid > 0 else False
+
+        # Formatting pid
+        self.pid = self.pid if self.pid > 0 else None
+
+        if self.autorun is False:
+            self.autorun_status = '[red]disabled[/red]'
+        elif self.autorun and self.autorun_exclude:
+            self.autorun_status = '[yellow]suspended[/yellow]'
+        elif self.autorun and not self.autorun_exclude:
+            self.autorun_status = '[green]enabled[/green]'
+
+        # Formatting restart
+        n_restart = self.restart if self.restart > 0 else 0
+        self.restart_status = f"{n_restart}/{self.max_restart}"
 
     @property
     def is_running(self):
