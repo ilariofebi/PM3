@@ -185,10 +185,10 @@ def stop_and_rm_process(id_or_name):
         if proc.pid in local_popen_process:
             # Processi attivati da os.getpid() vanno trattati con popen
             ret = _local_kill(proc)
-            logging.debug('local kill')
+            logging.debug(f'local kill process {proc}')
         else:
             ret = proc.kill()
-            logging.debug('simple kill')
+            logging.debug(f'simple kill process {proc}')
 
         if ret.msg == 'OK':
             proc.autorun_exclude = True

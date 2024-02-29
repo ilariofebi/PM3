@@ -156,7 +156,7 @@ class Process(BaseModel):
     pm3_name: str = Field(json_schema_extra={'list': True})
     cmd: str = Field(json_schema_extra={'list': True})
     cwd: Optional[str] = Field(default= Path.home().as_posix() , json_schema_extra={'list': True})
-    pid: int = Field(default=-1 , json_schema_extra={'list': True})
+    pid: Optional[int] = Field(default=-1, json_schema_extra={'list': True})
     pm3_home: Optional[str] = Path('~/.pm3/').expanduser().as_posix()
     restart: int = Field(default=-1)
     shell: bool = False
@@ -189,9 +189,6 @@ class Process(BaseModel):
         # Fromatting running
         self.running = True if self.pid > 0 else False
 
-        # Formatting pid
-        self.pid = self.pid if self.pid > 0 else None
-
         if self.autorun is False:
             self.autorun_status = '[red]disabled[/red]'
         elif self.autorun and self.autorun_exclude:
@@ -205,7 +202,7 @@ class Process(BaseModel):
 
     @property
     def is_running(self):
-        if self.pid > 0:
+        if self.pid is not None and self.pid > 0:
 
             try:
                 # Verifico che il pid esita ancora
@@ -266,7 +263,7 @@ class Process(BaseModel):
         return (gone, alive)
 
     def kill(self):
-        if self.pid == -1:
+        if self.pid is None or self.pid == -1:
             return KillMsg(msg='NOT RUNNING', warn=True)
         try:
             psutil.Process(self.pid)

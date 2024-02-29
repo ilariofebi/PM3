@@ -20,7 +20,7 @@ class Pm3Table:
         self.locked_all = self.locked_function(self.tbl.all)
         self.locked_contains = self.locked_function(self.tbl.contains)
         self.locked_get = self.locked_function(self.tbl.get)
-        self.locked_remove = self.locked_function(self.tbl.get)
+        self.locked_remove = self.locked_function(self.tbl.remove)
         self.locked_update = self.locked_function(self.tbl.update)
 
     def locked_function(this, func):

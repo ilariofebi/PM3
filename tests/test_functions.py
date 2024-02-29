@@ -1,5 +1,5 @@
 from importlib import import_module
-import json
+import json, os
 from subprocess import run
 from types import SimpleNamespace as Namespace
 import unittest
@@ -8,6 +8,8 @@ from datetime import datetime
 
 module = 'PM3'
 test_process_name = 'test_process_name'
+run_anyway_dangerous_if_true = True
+
 
 def shell(command, **kwargs):
     """
@@ -31,15 +33,20 @@ def dump_and_read_json():
     assert result.exit_code == 0
 
     # deve esserci il nome del file
+    assert os.path.exists(file_name)
+
     with open(file_name) as f:
         return json.loads( f.read())
+
 
 
 class TestShell(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Another daemon already running?"""
-        print("xyz")
+        if run_anyway_dangerous_if_true:
+            return # bypass daemon check (for debugging)
+        
         result = shell(f"python -m {module}.cli ping")
         if (result.exit_code == 0):
             print("""Another daemon already running! Another active instance!
@@ -53,6 +60,9 @@ class TestShell(unittest.TestCase):
         import_module(f"{module}")
 
     def test_02_async_daemon_start(self):
+        if run_anyway_dangerous_if_true:
+            return # do not start the daemon
+        
         result = shell(f"python -m {module}.cli daemon start")
         assert result.exit_code == 0
 
@@ -61,11 +71,17 @@ class TestShell(unittest.TestCase):
         result = shell(f"python -m {module}.cli dump --file test_dump_" + datetime.now().strftime("%d%m%Y-%H%M%S.%f") + ".json")
         assert result.exit_code == 0
 
+    def test_04_pre_test_add_process(self):
+        result = shell(f"python -m {module}.cli new {test_process_name}") # ora di sicuro l'aggiunta deve andare e buon fine
+        assert result.exit_code == 0
+
     def test_04_purge_process(self):
-        shell(f"python -m {module}.cli rm all") # rimuovi ma non ti interessare del risultato
+        result = shell(f"python -m {module}.cli rm all") # rimuovi ma non ti interessare del risultato
+        assert result.exit_code == 0
 
     def test_05_dump_test_purged(self):
         # facciamo un dump per backup
+        # contolliamo poi che il file esista!
         if len(dump_and_read_json()) != 0:
             assert False
 
@@ -91,15 +107,27 @@ class TestShell(unittest.TestCase):
         result = shell(f"python -m {module}.cli start {test_process_name}")
         assert result.exit_code == 0
 
-    def test_10_dump(self):
+    def test_10a_test_ls(self):
+        result = shell(f"python -m {module}.cli ls")
+        assert result.exit_code == 0
+
+    def test_10b_test_ls(self):
+        result = shell(f"python -m {module}.cli ls -j")
+        assert result.exit_code == 0
+
+    def test_10c_test_ls(self):
+        result = shell(f"python -m {module}.cli ls -l")
+        assert result.exit_code == 0
+
+    def test_11_dump(self):
         # facciamo un dump per backup
         if len(dump_and_read_json()) != 1:
             assert False
 
-    def test_11_test_restart(self):
+    def test_12_test_restart(self):
         result = shell(f"python -m {module}.cli restart {test_process_name}")
         assert result.exit_code == 0
 
-    def test_12_async_daemon_stop(self):
+    def test_13_async_daemon_stop(self):
         result = shell(f"python -m {module}.cli daemon stop")
         assert result.exit_code == 0
