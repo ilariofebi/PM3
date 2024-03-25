@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from collections.abc import Iterable
 import json
 import sys
 import shutil
@@ -6,9 +7,10 @@ import time
 import requests
 import argparse, argcomplete
 import logging
-from PM3.model.process import Process, ProcessStatus, ProcessStatusLight, ProcessList
+from PM3.model.process import Process, ProcessStatus, ProcessStatusLight
 from PM3.model.pm3_protocol import RetMsg
 from PM3.libs.system_scripts import pm3_scripts
+import PM3.model.errors as PM3_errors
 from rich import print
 from rich.table import Table
 from rich.console import Console
@@ -22,6 +24,8 @@ import getpass
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger()
+
+
 
 async def tailfile(f, lines=10):
     with async_fail_tail(f, lines=lines) as tail:
@@ -165,7 +169,7 @@ def _ls(id_or_name='all', _format='table'):
         if _format == 'table':
             return _tabulate_ls(payload_sorted)
         elif _format == 'json':
-            return json.dumps([ProcessList(**i).dict() for i in payload_sorted], indent=2)
+            return json.dumps([Process(**i).model_dump() for i in payload_sorted], indent=2)
         else:
             return _show_list(payload_sorted)
     else:
@@ -183,9 +187,9 @@ def _ps(id_or_name='all', _format='table'):
             if _format == 'table':
                 return _tabulate_ps(payload_sorted)
             elif _format == 'json':
-                return json.dumps([ProcessStatus(**p).dict() for p in payload_sorted], indent=2)
+                return json.dumps([ProcessStatus(**p).model_dump() for p in payload_sorted], indent=2)
             else:
-                payload_sorted = [ProcessStatus(**p).dict() for p in payload_sorted]
+                payload_sorted = [ProcessStatus(**p).model_dump() for p in payload_sorted]
                 return _show_list(payload_sorted)
         else:
             return '[yellow]there is nothing to look at[/yellow]'
@@ -209,7 +213,7 @@ def _tabulate_ps(data):
     table = Table(show_header=True, header_style="bold green")
 
     for n, r in enumerate(data):
-        r = ProcessStatusLight(**r).dict()  # Validate and sort
+        r = ProcessStatusLight(**r).model_dump()  # Validate and sort
         if n == 0:
             for h in r.keys():
                 table.add_column(h)
@@ -228,20 +232,22 @@ def _tabulate_ls(data):
     table = Table(show_header=True, header_style="bold yellow")
 
     for n, r in enumerate(data):
-        #r = Process(**r).dict()  # Validate and sort
-        r = ProcessList(**r).dict()  # Validate and sort
+        #r = Process(**r).model_dump()  # Validate and sort
+        r = Process(**r)  # Validate and sort
         if n == 0:
-            for h in r.keys():
-                table.add_column(h)
+            for h, h_info in r.model_fields.items():
+                if h_info.json_schema_extra is not None and h_info.json_schema_extra.get('list') == True:
+                    table.add_column(h)
 
         items = []
-        for k, v in r.items():
-            if 'autorun' in r and r['autorun'] is True and k == 'pid' and v == -1:
+        model = r.model_dump()
+        for k in table.columns:
+            if r.autorun is True and k == 'pid' and model['pid'] == -1:
                 items.append(f'[red]!!![/red]')
-            elif 'autorun' in r and r['autorun'] is False and k == 'pid' and v == -1:
+            elif r.autorun is False and k == 'pid' and model['pid'] == -1:
                 items.append(f'[gray]-[/gray]')
             else:
-                items.append(c.render_str(str(v)))
+                items.append(c.render_str(str( model[k.header] )))
         table.add_row(*items)
     return table
 
@@ -253,7 +259,7 @@ def _show_status(res, light=True):
             p = ProcessStatus(**proc)
         print('')
         print(f'[cyan]### {p.pm3_name} ({p.pm3_id}) ###[/cyan]')
-        for k, v in p.dict().items():
+        for k, v in p.model_dump().items():
             if k == 'status' and v == 'zombie':
                 print(f'  {k}=[bold italic yellow on red blink]{v}')
             else:
@@ -377,10 +383,13 @@ def main():
     parser_load.add_argument('-r', '--rewrite', dest='load_rewrite', action='store_true', help='rewrite if process already exist')
     parser_load.add_argument('-y', '--yes', dest='load_yes', action='store_true', help='response always yes')
 
+    parser_version = subparsers.add_parser('version', help='check PM3 version')
+
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
     kwargs = vars(args)
     logging.debug(kwargs)
+    res = None
 
     if args.subparser == 'ping':
         res = _get('ping')
@@ -400,7 +409,8 @@ def main():
 
         if args.what == 'start':
             if not res.err:
-                print(f"process running on pid {msg['pid']}")
+                print(f"[yellow]process already running on pid {msg['pid']}[/yellow]")
+                exit(PM3_errors.DAEMON_ALREADY_RUNNING)
             else:
                 backend = Process(cmd=config['backend'].get('cmd'),
                                   interpreter=config['main_section'].get('main_interpreter'),
@@ -413,7 +423,7 @@ def main():
                 p = backend.run()
                 time.sleep(2)
                 if psutil.Process(p.pid).is_running():
-                    res = _post('new/rewrite', backend.dict())
+                    res = _post('new/rewrite', backend.model_dump())
                     if res.err:
                         print(res)
                     else:
@@ -499,7 +509,7 @@ def main():
                     p = Process(**pr)
 
                     post_dest = 'new/rewrite'
-                    res = _post(post_dest, p.dict())
+                    res = _post(post_dest, p.model_dump())
                     _parse_retmsg(res)
                     logger.debug('done')
 
@@ -520,7 +530,7 @@ def main():
                     stdout=args.pm3_stdout or '',
                     stderr=args.pm3_stderr or '',
                     max_restart=args.max_restart)
-        res = _post('new', p.dict())
+        res = _post('new', p.model_dump())
         if res.err:
             print(res)
         else:
@@ -595,7 +605,6 @@ def main():
                             open(Path(ftt), 'w').close()
                             print(f"[yellow2] {ftt} is emptied [/yellow2]")
 
-
     elif args.subparser == 'dump':
         _dump(args)
 
@@ -621,15 +630,28 @@ def main():
 
             if r == 'y':
                 post_dest = 'new' if args.load_rewrite is False else 'new/rewrite'
-                res = _post(post_dest, p.dict())
+                res = _post(post_dest, p.model_dump())
                 _parse_retmsg(res)
             elif r == 'n':
                 print(f'[yellow]skip import {p.pm3_name} ({p.pm3_id})[/yellow]')
             else:
                 print(f'[red]only y or n are accepted... skip[/red]')
 
+    elif args.subparser == 'version':
+        import importlib.metadata
+        version = importlib.metadata.version('PM3')
+        print("PM3 " + version)
     else:
         print(parser.format_help())
+    # ritorna errore se la chiamata è finita in errore
+    # OPPURE uno dei messaggi è finito in errore
+        
+    if res is not None:
+        if res.err:
+            sys.exit(PM3_errors.DAEMON_CONNECTION_ERROR)
+        if res.payload is not None and isinstance(res.payload, list):
+            if  any(x.get('err') for x in res.payload):
+                sys.exit( PM3_errors.DAEMON_ERROR_IN_ANSWER )
 
 if __name__ == '__main__':
     main()

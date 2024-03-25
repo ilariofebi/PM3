@@ -1,7 +1,7 @@
 from logging.handlers import RotatingFileHandler
 import threading, logging
-from pydantic import BaseModel, validator, root_validator
-from typing import Union
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Optional, Union
 import subprocess as sp
 import psutil
 import os
@@ -37,25 +37,24 @@ class ProcessStatusLight(BaseModel):
     restart: int
     autorun: bool
 
-    @validator('memory_percent')
+    @field_validator('memory_percent')
     def memory_percent_formatter(cls, v):
         v = round(v, 2)
         return v
 
-    @validator('cmdline')
+    @field_validator('cmdline')
     def cmdline_formatter(cls, v):
         if isinstance(v, list):
             v = ' '.join(v)
         return v
 
-    @root_validator(pre=True)
-    def time_ago_generator(cls, values):
-        create_time = pendulum.from_timestamp(values['create_time'])
+    @model_validator(mode='after')
+    def time_ago_generator(self):
+        create_time = pendulum.from_timestamp(self.create_time)
         time_ago = pendulum.now() - create_time
-        values['time_ago'] = time_ago.in_words()
-        return values
+        self.time_ago = time_ago.in_words()
 
-    @validator('create_time')
+    @field_validator('create_time')
     def create_time_formatter(cls, v, values, **kwargs):
         if isinstance(v, float):
             v = pendulum.from_timestamp(v).astimezone().format('DD/MM/YYYY HH:mm:ss')
@@ -137,9 +136,8 @@ class LogPipe(threading.Thread):
         os.close(self.fdWrite)
 
 
-class ProcessList(BaseModel):
     # Utilizzata per mostrare i dati in formato tabellare
-    pm3_id: int
+
     pm3_name: str
     cmd: str
     cwd: str = Path.home().as_posix()
@@ -148,69 +146,63 @@ class ProcessList(BaseModel):
     running: bool = False
     autorun: Union[bool, str] = False
 
-    @root_validator(pre=True)
-    def _formatter(cls, values):
-        # Fromatting running
-        values['running'] = True if values['pid'] > 0 else False
 
-        # Formatting pid
-        values['pid'] = values['pid'] if values['pid'] > 0 else None
 
-        # Formatting restart
-        n_restart = values['restart'] if values['restart'] > 0 else 0
-        values['restart'] = f"{n_restart}/{values['max_restart']}"
-
-        # Formatting autorun
-        if values['autorun'] is False:
-            values['autorun'] = '[red]disabled[/red]'
-        elif values['autorun'] and values['autorun_exclude']:
-            values['autorun'] = '[yellow]suspended[/yellow]'
-        elif values['autorun'] and not values['autorun_exclude']:
-            values['autorun'] = '[green]enabled[/green]'
-        return values
 
 
 class Process(BaseModel):
     # Struttura vera del processo
-    pm3_id: int = None  # None significa che deve essere assegnato da next_id()
-    pm3_name: str
-    cmd: str
-    cwd: str = Path.home().as_posix()
-    pid: int = -1
-    pm3_home: str = Path('~/.pm3/').expanduser().as_posix()
-    restart: int = -1
+    pm3_id: Optional[int] = Field(default=None, json_schema_extra={'list': True})  # None significa che deve essere assegnato da next_id()
+    pm3_name: str = Field(json_schema_extra={'list': True})
+    cmd: str = Field(json_schema_extra={'list': True})
+    cwd: Optional[str] = Field(default= Path.home().as_posix() , json_schema_extra={'list': True})
+    pid: Optional[int] = Field(default=-1, json_schema_extra={'list': True})
+    pm3_home: Optional[str] = Path('~/.pm3/').expanduser().as_posix()
+    restart: int = Field(default=-1)
     shell: bool = False
-    autorun: bool = False
+    autorun: bool = Field(default=False, json_schema_extra={'list': False})
     interpreter: str = ''
     stdout: str = ''
     stderr: str = ''
     nohup: bool = False
-    max_restart: int = 1000
-    autorun_exclude = False
+    max_restart: Optional[int] = 1000
+    autorun_exclude : bool = False
+    running: bool = Field(default=False, json_schema_extra={'list': True})
+    autorun_status: Optional[str] = Field(default=None, json_schema_extra={'list': True} )
+    restart_status: Optional[str] = Field(default=None, json_schema_extra={'list': True} )
 
-    @root_validator
-    def _formatter(cls, values):
+    @model_validator(mode='after')
+    def _formatter(self):
         # pm3_name
-        values['pm3_name'] = values['pm3_name'] or values['cmd'].split(" ")[0]
-        values['pm3_name'] = values['pm3_name'].replace(' ', '_').replace('./', '').replace('/', '')
+
+        self.pm3_name = self.pm3_name or self.cmd.split(" ")[0]
+        self.pm3_name = self.pm3_name.replace(' ', '_').replace('./', '').replace('/', '')
 
         # stdout
-        logfile = f"{values['pm3_name']}_{values['pm3_id']}.log"
-        values['stdout'] = values['stdout'] or Path(values['pm3_home'], 'log', logfile).as_posix()
+        logfile = f"{self.pm3_name}_{self.pm3_id}.log"
+        self.stdout = self.stdout or Path(self.pm3_home, 'log', logfile).as_posix()
 
         # stderr
-        errfile = f"{values['pm3_name']}_{values['pm3_id']}.err"
-        values['stderr'] = values['stderr'] or Path(values['pm3_home'], 'log', errfile).as_posix()
+        errfile = f"{self.pm3_name}_{self.pm3_id}.err"
+        self.stderr = self.stdout or Path(self.pm3_home, 'log', errfile).as_posix()
 
-        # Max restart
-        if values['max_restart'] is None or values['max_restart'] < 1:
-            values['max_restart'] = 1000
+        # Fromatting running
+        self.running = True if self.pid > 0 else False
 
-        return values
+        if self.autorun is False:
+            self.autorun_status = '[red]disabled[/red]'
+        elif self.autorun and self.autorun_exclude:
+            self.autorun_status = '[yellow]suspended[/yellow]'
+        elif self.autorun and not self.autorun_exclude:
+            self.autorun_status = '[green]enabled[/green]'
+
+        # Formatting restart
+        n_restart = self.restart if self.restart > 0 else 0
+        self.restart_status = f"{n_restart}/{self.max_restart}"
 
     @property
     def is_running(self):
-        if self.pid > 0:
+        if self.pid is not None and self.pid > 0:
 
             try:
                 # Verifico che il pid esita ancora
@@ -271,7 +263,7 @@ class Process(BaseModel):
         return (gone, alive)
 
     def kill(self):
-        if self.pid == -1:
+        if self.pid is None or self.pid == -1:
             return KillMsg(msg='NOT RUNNING', warn=True)
         try:
             psutil.Process(self.pid)
@@ -302,7 +294,7 @@ class Process(BaseModel):
             cmd.insert(0, self.interpreter)
 
         if self.nohup:
-            print("starting with nohup")
+            # print("starting with nohup")
             if 'nohup' not in cmd[0]:
                 cmd.insert(0, '/usr/bin/nohup')
             # print('detach', cmd)

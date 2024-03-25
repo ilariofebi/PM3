@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Union
+from typing import Optional, Union
 from collections import namedtuple
 
 # id or Name schema
@@ -12,7 +12,8 @@ class RetMsg(BaseModel):
     msg: str
     err: bool = False
     warn: bool = False
-    payload: Union[list, dict, None]
+    payload: Optional[Union[list, dict, None]] = None
+    err_code: Optional[int] = 0
 
 class KillMsg(BaseModel):
     msg: str = ''

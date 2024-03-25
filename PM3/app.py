@@ -28,9 +28,12 @@ if not os.path.isfile(config_file):
 config = ConfigParser()
 config.read(config_file)
 
-db = TinyDB(config['main_section'].get('pm3_db'))
+pm3_db_name = config['main_section'].get('pm3_db')
+pm3_db_lock_file = pm3_db_name + ".lock"
+db = TinyDB(pm3_db_name)
+
 tbl = db.table(config['main_section'].get('pm3_db_process_table'))
-ptbl = Pm3Table(tbl)
+ptbl = Pm3Table(tbl, lock_file=pm3_db_lock_file)
 
 backend_process_name = config['backend'].get('name') or '__backend__'
 cron_checker_process_name = config['cron_checker'].get('name') or '__cron_checker__'
@@ -48,7 +51,7 @@ def _resp(res: RetMsg) -> dict:
         logging.error(res.msg)
     if res.warn:
         logging.warning(res.msg)
-    return res.dict()
+    return res.model_dump()
 
 def _insert_process(proc: Process, rewrite=False):
     proc.pm3_id = ptbl.next_id() if proc.pm3_id is None else proc.pm3_id
@@ -60,13 +63,13 @@ def _insert_process(proc: Process, rewrite=False):
     if tbl.contains(where('pm3_id') == proc.pm3_id):
         if rewrite:
             tbl.remove(where('pm3_id') == proc.pm3_id)
-            tbl.insert(proc.dict())
+            tbl.insert(proc.model_dump())
             return 'OK'
         return 'ID_ALREADY_EXIST'
     elif tbl.contains(where('pm3_name') == proc.pm3_name):
         return 'NAME_ALREADY_EXIST'
     else:
-        tbl.insert(proc.dict())
+        tbl.insert(proc.model_dump())
         return 'OK'
 
 def _start_process(proc, ion) -> RetMsg:
@@ -111,8 +114,9 @@ def ps_proc_as_dict(ps_proc):
 
 @app.get("/ping")
 def pong():
-    payload = {'pid': os.getpid()}
-    return _resp(RetMsg(msg='PONG!', err=False, payload=payload))
+    pid = os.getpid()
+    payload = {'pid': pid}
+    return _resp(RetMsg(msg=f'PONG! pid {pid}', err=False, payload=payload))
 
 @app.post("/new")
 @app.post("/new/rewrite")
@@ -181,10 +185,10 @@ def stop_and_rm_process(id_or_name):
         if proc.pid in local_popen_process:
             # Processi attivati da os.getpid() vanno trattati con popen
             ret = _local_kill(proc)
-            logging.debug('local kill')
+            logging.debug(f'local kill process {proc}')
         else:
             ret = proc.kill()
-            logging.debug('simple kill')
+            logging.debug(f'simple kill process {proc}')
 
         if ret.msg == 'OK':
             proc.autorun_exclude = True
@@ -192,20 +196,21 @@ def stop_and_rm_process(id_or_name):
             for pk in ret.gone:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) with pid {pk.pid} was killed'
                 resp_list.append(_resp(RetMsg(msg=msg, err=False)))
+        
         elif ret.warn:
             for pk in ret.alive:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) with pid {pk.pid} still alive'
                 resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
-            if ret.alive == 0:
+            if len(ret.alive) == 0:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) not running'
                 resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
         else:
-            msg = f'Strange Error'
+            msg = f'strange Error'
             resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
 
         if request.path.startswith('/rm/'):
             if not ptbl.delete(proc):
-                msg = f'Error updating {proc}'
+                msg = f'error updating {proc}'
                 resp_list.append(_resp(RetMsg(msg=msg, err=True)))
             else:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) removed'
@@ -214,7 +219,9 @@ def stop_and_rm_process(id_or_name):
     if request.path.startswith('/restart/'):
         resp_list += start_process(id_or_name)['payload']
 
-    return _resp(RetMsg(msg='', payload=resp_list))
+    ret_msg = RetMsg(msg='', payload=resp_list)
+
+    return _resp(ret_msg)
 
 @app.get("/ls/<id_or_name>")
 def ls_process(id_or_name):
@@ -227,7 +234,7 @@ def ls_process(id_or_name):
         proc.is_running
         ptbl.update(proc)
         payload.append(proc)
-    return RetMsg(msg='OK', err=False, payload=payload).dict()
+    return RetMsg(msg='OK', err=False, payload=payload).model_dump()
 
 @app.get("/ps/<id_or_name>")
 def pstatus(id_or_name):
@@ -244,11 +251,11 @@ def pstatus(id_or_name):
     payload = []
     for proc in procs:
         if proc.pid > 0:
-            payload.append({**proc.dict(), **ps_proc_as_dict(psutil.Process(proc.pid))})
+            payload.append({**proc.model_dump(), **ps_proc_as_dict(psutil.Process(proc.pid))})
 
             # Children process
             for ps_proc in psutil.Process(proc.pid).children(recursive=True):
-                payload.append({**proc.dict(), **ps_proc_as_dict(ps_proc)})
+                payload.append({**proc.model_dump(), **ps_proc_as_dict(ps_proc)})
 
     return _resp(RetMsg(msg='OK', err=False, payload=payload))
 
