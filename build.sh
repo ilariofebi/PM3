@@ -1,2 +1,5 @@
-#!/bin/bash
-pip wheel --no-deps --wheel-dir ./dist .
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Build both sdist and wheel using uv
+uv build

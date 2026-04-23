@@ -132,3 +132,4 @@ PM3_local/*
 
 .env.*
 .venv/
+.cursor
