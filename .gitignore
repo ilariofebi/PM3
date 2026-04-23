@@ -131,3 +131,4 @@ dmypy.json
 PM3_local/*
 
 .env.*
+.venv/

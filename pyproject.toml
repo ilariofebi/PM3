@@ -1,6 +1,6 @@
 # configure .env for database access
 [build-system]
-requires = ["setuptools", "setuptools-scm"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -31,4 +31,7 @@ pm3_backend = "PM3.app:main"
 
 [tool.setuptools]
 packages = ['PM3', 'PM3.libs', 'PM3.model']
+
+[tool.setuptools_scm]
+fallback_version = "0.5.0"
 
