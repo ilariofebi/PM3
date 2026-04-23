@@ -1,21 +1,112 @@
-import os
-from time import sleep
+import json
+import hashlib
+import gzip
+import logging
+import shutil
+from datetime import datetime
+from pathlib import Path
 from PM3.model.pm3_protocol import ION
 from PM3.model.process import Process
 from tinydb import where
 from tinydb.table import Table
-import fcntl
+from filelock import FileLock
+from configparser import ConfigParser
+
+logger = logging.getLogger(__name__)
+
 
 def hidden_proc(x: str) -> bool:
     return x.startswith('__') and x.endswith('__')
 
-from filelock import FileLock
+
+class Pm3Database:
+    def __init__(self, db_path: str):
+        self.db_path = Path(db_path)
+        self.backup_dir = self.db_path.parent / 'backups'
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
+        self.max_backups = 20
+        self._last_backup_hash = None
+        config = ConfigParser()
+        config_file = Path('~/.pm3/config.ini').expanduser()
+        if config_file.exists():
+            config.read(config_file)
+            self.max_backups = int(config['main_section'].get('max_backups', '20'))
+
+    @staticmethod
+    def _calculate_file_hash(file_path: Path, compressed: bool = False) -> str:
+        sha = hashlib.sha256()
+        opener = gzip.open if compressed else open
+        with opener(file_path, 'rb') as fh:
+            for chunk in iter(lambda: fh.read(4096), b''):
+                sha.update(chunk)
+        return sha.hexdigest()
+
+    def _compress_file(self, source_path: Path, dest_path: Path) -> None:
+        with open(source_path, 'rb') as f_in:
+            with gzip.open(dest_path, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+
+    def _decompress_file(self, source_path: Path, dest_path: Path) -> None:
+        with gzip.open(source_path, 'rb') as f_in:
+            with open(dest_path, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+
+    def _cleanup_old_backups(self):
+        backups = sorted(self.backup_dir.glob(f'{self.db_path.stem}_*.json.gz'))
+        if len(backups) > self.max_backups:
+            for old_backup in backups[:-self.max_backups]:
+                old_backup.unlink(missing_ok=True)
+
+    def _create_backup(self) -> bool:
+        if not self.db_path.exists():
+            return True
+        try:
+            with open(self.db_path, 'r', encoding='utf-8') as db_file:
+                json.load(db_file)
+        except json.JSONDecodeError:
+            logger.error('Database is corrupted: backup skipped')
+            return False
+
+        current_hash = self._calculate_file_hash(self.db_path)
+        if current_hash == self._last_backup_hash:
+            return True
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        temp_backup_path = self.backup_dir / f'{self.db_path.stem}_{timestamp}.json'
+        backup_path = self.backup_dir / f'{self.db_path.stem}_{timestamp}.json.gz'
+        shutil.copy2(self.db_path, temp_backup_path)
+        self._compress_file(temp_backup_path, backup_path)
+        temp_backup_path.unlink(missing_ok=True)
+        try:
+            with gzip.open(backup_path, 'rt', encoding='utf-8') as backup_file:
+                json.load(backup_file)
+        except Exception:
+            backup_path.unlink(missing_ok=True)
+            logger.error('Backup validation failed')
+            return False
+
+        self._last_backup_hash = current_hash
+        self._cleanup_old_backups()
+        return True
+
+    def safe_write(self, operation):
+        if not self._create_backup():
+            return False
+        result = operation()
+        try:
+            with open(self.db_path, 'r', encoding='utf-8') as db_file:
+                json.load(db_file)
+        except Exception:
+            logger.exception('Database validation failed after write')
+            return False
+        return result
 
 
 class Pm3Table:
-    def __init__(self, tbl: Table, lock_file: str):
+    def __init__(self, tbl: Table, lock_file: str, db_path: str):
         self.tbl = tbl
         self.lock_file_name = lock_file
+        self.db = Pm3Database(db_path)
 
         self.locked_all = self.locked_function(self.tbl.all)
         self.locked_contains = self.locked_function(self.tbl.contains)
@@ -25,15 +116,10 @@ class Pm3Table:
 
     def locked_function(this, func):
         def inner(*args, **kwargs):
-            print(f"locking for func  {func}...", flush=True)
-            sleep(0.1)
+            logger.debug("Acquiring db lock for %s", getattr(func, "__name__", str(func)))
             with FileLock(this.lock_file_name):
-                print(f"> acquired lock...", flush=True)
                 output = func(*args, **kwargs)
-                #sleep(0.1)
-                print("> unlocking...", flush=True)
-            # sleep(0.1)
-            print("unlocked", flush=True)
+            logger.debug("Released db lock for %s", getattr(func, "__name__", str(func)))
             return output
         return inner
     
@@ -59,15 +145,19 @@ class Pm3Table:
 
     def delete(self, proc, col='pm3_id'):
         if self.select(proc, col):
-            self.locked_remove(where(col) == proc.model_dump()[col])
-            return True
+            def operation():
+                self.tbl.remove(where(col) == proc.model_dump()[col])
+                return True
+            return self.locked_function(lambda: self.db.safe_write(operation))()
         else:
             return False
 
     def update(self, proc, col='pm3_id'):
         if self.select(proc, col):
-            self.locked_update(proc, where(col) == proc.model_dump()[col])
-            return True
+            def operation():
+                self.tbl.update(proc.model_dump(), where(col) == proc.model_dump()[col])
+                return True
+            return self.locked_function(lambda: self.db.safe_write(operation))()
         else:
             return False
 

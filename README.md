@@ -1,128 +1,99 @@
 # PM3
-Like pm2 without node.js ;-)
+Like pm2 without node.js.
+
 ![](https://github.com/ilariofebi/PM3/blob/main/screenshots/ls.png?raw=true)
-# PM3 CheatSheet:
-### Install and update
-Build a [virtualenv](https://docs.python.org/3.9/tutorial/venv.html) environment (recommended)
-```
-python3.9 -m venv PM3venv
-. PM3venv/bin/activate
-```
-Then:
-```
-pip install pm3             # Install pm3
-pip install -U pm3          # Upgrade pm3
+
+## Installation
+
+Create a virtual environment and install PM3:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install pm3
 ```
 
-### Start
-```
-pm3 daemon start    # Start process with default ~/.pm3/config.ini configuration 
-pm3 ping            # Ensure pm3 daemon has been launched
+To upgrade:
+
+```bash
+pip install -U pm3
 ```
 
-### Create new process
-```
-pm3 new '/bin/sleep 10' -n sleep10                                  # Create a new process with name sleep10
-pm3 new '/bin/sleep 10' -n sleep10 --autorun                        # Create a new process with autorun option
-pm3 new "script.py" --interpreter "/venv/bin/python" --cwd "/tmp"   # Create a new process with interpreter and cwd definition
-pm3 new '/bin/sleep 5' --max-restart 10 --autorun                   # Stops restarting the process after 10 restarts        
-```
-### Actions
-```
-pm3 start sleep10   # Start process with name sleep10
-pm3 start 1         # Start process with id 1
-pm3 restart all     # Restart all process
-pm3 stop 2          # Stop process with id 2 
-pm3 rm 3            # Stop and delete process with id 3
+## Quick start
+
+```bash
+pm3 daemon start
+pm3 ping
 ```
 
-### Listing
-```
-pm3 ls                 # Display all processes
-pm3 ls -l              # Display all processes in list format
-pm3 ls -j              # Display all processes in json format
-pm3 ps 5               # Display process 5 status
-pm3 ps -l ALL          # Display ALL processes (hidden or not) status in list format
-pm3 ps -j ALL          # Display ALL processes (hidden or not) status in json format
+Create and manage a process:
+
+```bash
+pm3 new "/bin/sleep 10" -n sleep10 --autorun
+pm3 start sleep10
+pm3 stop sleep10
+pm3 rm sleep10
 ```
 
-### Dump and Load
-```
-pm3 dump 2                  # Print process 2 configuration in JSON
-pm3 dump all -f dump.json   # Save all configuration processes in dump.json file 
-pm3 load dump.json          # Load all configuration processes from dump.json file 
+## Useful commands
+
+```bash
+pm3 ls
+pm3 ls -l
+pm3 ls -j
+pm3 ps all
+pm3 dump all -f dump.json
+pm3 load -f dump.json
+pm3 log all -f
+pm3 err all -n 50
+pm3 flush all all
+pm3 version
 ```
 
-### Logs
-```
-pm3 log            # Display all processes logs
-pm3 log 5 -f       # Display and follow log of process 5
-pm3 err 2 -n 50    # Display last 50 rows of process 5 error log 
-pm3 flush 1 log    # Empty log file of process 1
-pm3 flush all err  # Empty err file of all process
-```
+## Configuration
 
-### Useful script generation
-```
-pm3 make_script systemd     # Generate script for install startup systemd configuration
-```
+Default config file: `~/.pm3/config.ini`
 
-### Misc
-```
-pm3 reset 2                 # Reset meta data of process id 2
-pm3 ping [-v]               # Ensure pm3 daemon has been launched [verbose]
-pm3 rename 3 -n <new_name>  # Rename process id 3 with a <new_name>
-pm3 -h                      # General help
-pm3 new -h                  # Help of new subcommand  
-```
-
-### Daemon commands
-```
-pm3 daemon start        # Start PM3 backend porcess
-pm3 daemon stop         # Stop PM3 backend porcess
-pm3 daemon status       # Check daemon status details
-```
-
-# Configuration file:
-`$ cat ~/.pm3/config.ini`
-```
+```ini
 [main_section]
-pm3_home_dir = /home/user/.pm3                  # pm3 home dir
-pm3_db = /home/user/.pm3/pm3_db.json            # TinyDB Store File
-pm3_db_process_table = pm3_procs                # TinyDB process table
-main_interpreter = /home/user/venv/bin/python   # path of python interpreter
+pm3_home_dir = /home/user/.pm3
+pm3_db = /home/user/.pm3/pm3_db.json
+pm3_db_process_table = pm3_procs
+main_interpreter = /home/user/venv/bin/python
+max_backups = 20
+log_max_bytes = 10485760
+log_backup_count = 5
+log_compress = true
 
 [backend]
-name = __backend__                       # name of backend process (hidden process)
-url = http://127.0.0.1:7979/             # proto://ip:port of backend (if != 127.1 is a potential RISK!!)
-cmd = /home/user/venv/bin/pm3_backend    # path of backend command
+name = __backend__
+url = http://127.0.0.1:7979/
+cmd = /home/user/venv/bin/pm3_backend
 
 [cron_checker]
-name = __cron_checker__                      # name of backend process (hidden process)
-cmd = /home/user/venv/bin/pm3_cron_checker   # path of cron checker command
-sleep_time = 5                               # Time (in seconds) to check process                            
-debug = False                                # Crocn Checker debug info
+name = __cron_checker__
+cmd = /home/user/venv/bin/pm3_cron_checker
+sleep_time = 5
+debug = False
 ```
 
+## Backup and recovery
 
-## Autocompletition (experimental)
-### Bash
-```
-pm3_exe=$(which pm3)
-eval "$(register-python-argcomplete $pm3_exe)"
-```
+PM3 creates compressed backups of the TinyDB file before write operations.
+Backups are stored in `~/.pm3/backups/`.
 
-### Fish
-```
-pm3_exe=$(which pm3)
-register-python-argcomplete --shell fish $pm3_exe | source
-```
-or
-```
-register-python-argcomplete --shell fish $pm3_exe > ~/.config/fish/completions/pm3.fish
+If the database is corrupted at startup, PM3 prints a restore hint. Manual restore example:
+
+```bash
+gunzip -c ~/.pm3/backups/pm3_db_YYYYMMDD_HHMMSS.json.gz > ~/.pm3/pm3_db.json
 ```
 
-### Other shell
-visit https://kislyuk.github.io/argcomplete/
+## Log rotation
 
+Process log files are managed through `RotatingFileHandler` and can be configured with:
 
+- `log_max_bytes`
+- `log_backup_count`
+- `log_compress`
+
+When `log_compress=true`, rotated logs are gzip-compressed.

@@ -21,6 +21,7 @@ import psutil
 import asyncio
 from pytailer import async_fail_tail
 import getpass
+from typing import Optional
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger()
@@ -37,6 +38,23 @@ def _clean_ls_proc(p: dict) -> dict:
     p.pop('restart')
     p.pop('pm3_home')
     return p
+
+def _validate_json_file(file_path: str) -> bool:
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            json.load(file)
+        return True
+    except (json.JSONDecodeError, OSError):
+        return False
+
+def _get_latest_backup(db_path: str) -> Optional[str]:
+    backup_dir = Path(db_path).parent / 'backups'
+    if not backup_dir.exists():
+        return None
+    backups = sorted(backup_dir.glob(f"{Path(db_path).stem}_*.json.gz"))
+    if not backups:
+        return None
+    return backups[-1].as_posix()
 
 def _setup():
     pm3_home_dir = Path('~/.pm3').expanduser()
@@ -62,6 +80,10 @@ def _setup():
             'pm3_db': f'{pm3_home_dir}/pm3_db.json',
             'pm3_db_process_table': 'pm3_procs',
             'main_interpreter': exe,
+            'max_backups': '20',
+            'log_max_bytes': '10485760',
+            'log_backup_count': '5',
+            'log_compress': 'true',
         }
         config['backend'] = {
             'name': '__backend__',
@@ -300,6 +322,16 @@ def main():
     pm3_home_dir = config['main_section'].get('pm3_home_dir')
     backend_process_name = config['backend'].get('name') or '__backend__'
     cron_checker_process_name = config['cron_checker'].get('name') or '__cron_checker__'
+    db_path = config['main_section'].get('pm3_db')
+    if Path(db_path).exists() and not _validate_json_file(db_path):
+        latest_backup = _get_latest_backup(db_path)
+        print(f"[red]ERROR:[/red] Database file {db_path} is corrupted.")
+        if latest_backup:
+            print("[yellow]Suggestion:[/yellow] Restore latest backup:")
+            print(f"gunzip -c {latest_backup} > {db_path}")
+        else:
+            print("[yellow]Suggestion:[/yellow] Remove the corrupted file and start daemon again.")
+        sys.exit(PM3_errors.DAEMON_DB_CORRUPTED)
 
     parser = argparse.ArgumentParser(prog='pm3', description='Like pm2 without node.js')
     subparsers = parser.add_subparsers(dest='subparser')
