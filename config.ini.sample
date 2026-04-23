@@ -1,0 +1,28 @@
+[main_section]
+# PM3 home directory
+pm3_home_dir = /home/user/.pm3
+# TinyDB file
+pm3_db = /home/user/.pm3/pm3_db.json
+# TinyDB table name
+pm3_db_process_table = pm3_procs
+# Python interpreter used by PM3
+main_interpreter = /home/user/venv/bin/python
+# Maximum number of DB backups to keep
+max_backups = 20
+# Maximum log file size in bytes
+log_max_bytes = 10485760
+# Number of rotated log files
+log_backup_count = 5
+# Compress rotated log files
+log_compress = true
+
+[backend]
+name = __backend__
+url = http://127.0.0.1:7979/
+cmd = /home/user/venv/bin/pm3_backend
+
+[cron_checker]
+name = __cron_checker__
+cmd = /home/user/venv/bin/pm3_cron_checker
+sleep_time = 5
+debug = False

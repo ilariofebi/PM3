@@ -1,5 +1,8 @@
 from logging.handlers import RotatingFileHandler
 import threading, logging
+from configparser import ConfigParser
+import gzip
+import shutil
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, Union
 import subprocess as sp
@@ -102,11 +105,30 @@ class LogPipe(threading.Thread):
         """
         # nuovo logger
         from uuid import uuid4
-        logger = logging.getLogger( str(uuid4()))
-        handler = RotatingFileHandler(filename, maxBytes=1000*1000*30, backupCount=20)
+        logger = logging.getLogger(str(uuid4()))
+        config = ConfigParser()
+        config_file = Path('~/.pm3/config.ini').expanduser()
+        if config_file.exists():
+            config.read(config_file)
+            max_bytes = int(config['main_section'].get('log_max_bytes', '10485760'))
+            backup_count = int(config['main_section'].get('log_backup_count', '5'))
+            compress = config['main_section'].get('log_compress', 'true').lower() == 'true'
+        else:
+            max_bytes = 10485760
+            backup_count = 5
+            compress = True
+
+        handler = RotatingFileHandler(
+            filename,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding='utf-8',
+        )
+        if compress:
+            handler.rotator = self._compress_rotated_file
         logger.level = level
         handler.level = level
-        logger.addHandler( handler )
+        logger.addHandler(handler)
 
         threading.Thread.__init__(self)
         self.daemon = False
@@ -116,6 +138,15 @@ class LogPipe(threading.Thread):
         self.pipeReader = os.fdopen(self.fdRead)
 
         self.start()
+
+    @staticmethod
+    def _compress_rotated_file(source, dest):
+        if os.path.exists(dest):
+            os.remove(dest)
+        with open(source, 'rb') as f_in:
+            with gzip.open(dest, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+        os.remove(source)
 
     def fileno(self):
         """Return the write file descriptor of the pipe
@@ -184,7 +215,7 @@ class Process(BaseModel):
 
         # stderr
         errfile = f"{self.pm3_name}_{self.pm3_id}.err"
-        self.stderr = self.stdout or Path(self.pm3_home, 'log', errfile).as_posix()
+        self.stderr = self.stderr or Path(self.pm3_home, 'log', errfile).as_posix()
 
         # Fromatting running
         self.running = True if self.pid > 0 else False
@@ -259,6 +290,26 @@ class Process(BaseModel):
         except psutil.NoSuchProcess:
             gone = [alive_gone(pid=pid),]
             alive = []
+
+        if alive:
+            for p in alive:
+                try:
+                    p.send_signal(signal.SIGKILL)
+                except psutil.NoSuchProcess:
+                    pass
+            try:
+                gone2, alive2 = psutil.wait_procs(alive, timeout=timeout, callback=on_terminate)
+                gone.extend(gone2)
+                alive = alive2
+            except psutil.NoSuchProcess:
+                alive = []
+
+        for p in children:
+            try:
+                if p.status() == psutil.STATUS_ZOMBIE:
+                    p.wait()
+            except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+                pass
 
         return (gone, alive)
 

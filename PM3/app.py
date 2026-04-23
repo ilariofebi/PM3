@@ -33,7 +33,7 @@ pm3_db_lock_file = pm3_db_name + ".lock"
 db = TinyDB(pm3_db_name)
 
 tbl = db.table(config['main_section'].get('pm3_db_process_table'))
-ptbl = Pm3Table(tbl, lock_file=pm3_db_lock_file)
+ptbl = Pm3Table(tbl, lock_file=pm3_db_lock_file, db_path=pm3_db_name)
 
 backend_process_name = config['backend'].get('name') or '__backend__'
 cron_checker_process_name = config['cron_checker'].get('name') or '__cron_checker__'
@@ -142,14 +142,19 @@ def new_process():
         return _resp(RetMsg(msg=msg, err=True))
 
 
-def _local_kill(proc ):
+def _local_kill(proc):
     p : Process = local_popen_process[proc.pid]
     local_pid = p.pid
-    #p.kill()
-    Process.kill_proc_tree(local_pid)
+    try:
+        p.terminate()
+    except Exception:
+        pass
+    try:
+        p.wait(timeout=5)
+    except Exception:
+        Process.kill_proc_tree(local_pid)
     for i in range(5):
-        _ = p.poll()
-        if not proc.is_running:
+        if not psutil.pid_exists(local_pid):
             break
         time.sleep(1)
     else:
@@ -201,7 +206,7 @@ def stop_and_rm_process(id_or_name):
             for pk in ret.alive:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) with pid {pk.pid} still alive'
                 resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
-            if len(ret.alive) == 0:
+            if not ret.alive:
                 msg = f'process {proc.pm3_name} (id={proc.pm3_id}) not running'
                 resp_list.append(_resp(RetMsg(msg=msg, warn=True)))
         else:
